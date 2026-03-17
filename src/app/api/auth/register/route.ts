@@ -7,6 +7,9 @@ export async function POST(req: Request) {
   if (!name || !email || !password) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
+  if (typeof password !== "string" || password.length < 8) {
+    return NextResponse.json({ error: "Password must be at least 8 characters" }, { status: 400 });
+  }
   const exists = await db.merchant.findUnique({ where: { email } });
   if (exists) {
     return NextResponse.json({ error: "Email already registered" }, { status: 409 });
