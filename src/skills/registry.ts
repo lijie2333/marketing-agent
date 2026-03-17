@@ -57,3 +57,6 @@ import { complianceCheckerSkill } from "./compliance-checker";
 skillRegistry.register(strategyPlannerSkill);
 skillRegistry.register(seedancePrompterSkill);
 skillRegistry.register(complianceCheckerSkill);
+
+import { jobDispatcherSkill } from "./job-dispatcher";
+skillRegistry.register(jobDispatcherSkill);
