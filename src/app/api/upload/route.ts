@@ -3,7 +3,9 @@ import { auth } from "@/lib/auth";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 
+// UPLOAD_DIR is the server filesystem path; public URL prefix is always /uploads
 const UPLOAD_DIR = process.env.UPLOAD_DIR || "./uploads";
+const PUBLIC_URL_PREFIX = "/uploads";
 const MAX_SIZE_MB = 10;
 
 export async function POST(req: NextRequest) {
@@ -33,6 +35,6 @@ export async function POST(req: NextRequest) {
   const buffer = Buffer.from(await file.arrayBuffer());
   await writeFile(filepath, buffer);
 
-  const url = `/uploads/${session.user.id}/${filename}`;
+  const url = `${PUBLIC_URL_PREFIX}/${session.user.id}/${filename}`;
   return NextResponse.json({ url });
 }
