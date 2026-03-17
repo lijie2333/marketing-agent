@@ -1,0 +1,100 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Merchant {
+  id            String         @id @default(cuid())
+  name          String
+  email         String         @unique
+  passwordHash  String
+  brandProfiles BrandProfile[]
+  sessions      Session[]
+  createdAt     DateTime       @default(now())
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  merchantId   String
+  merchant     Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  expires      DateTime
+}
+
+model BrandProfile {
+  id                   String          @id @default(cuid())
+  merchantId           String
+  merchant             Merchant        @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  brandPersonality     String
+  coreSellingPoints    String[]
+  targetAudience       String
+  recommendedStyles    String[]
+  videoTone            String
+  complianceNotes      String[]
+  uploadedFileUrls     String[]
+  questionnaireAnswers Json
+  regenerationCount    Int             @default(0)
+  strategies           VideoStrategy[]
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+}
+
+model VideoStrategy {
+  id             String        @id @default(cuid())
+  brandProfileId String
+  brandProfile   BrandProfile  @relation(fields: [brandProfileId], references: [id], onDelete: Cascade)
+  contentMatrix  Json
+  keywordPool    Json
+  prompts        Prompt[]
+  createdAt      DateTime      @default(now())
+}
+
+model Prompt {
+  id               String           @id @default(cuid())
+  strategyId       String
+  strategy         VideoStrategy    @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+  content          String
+  duration         Int
+  ratio            String
+  style            String
+  direction        String
+  complianceStatus ComplianceStatus @default(PENDING)
+  isConfirmed      Boolean          @default(false)
+  videoJob         VideoJob?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+}
+
+model VideoJob {
+  id           String    @id @default(cuid())
+  promptId     String    @unique
+  prompt       Prompt    @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  status       JobStatus @default(QUEUED)
+  workerId     String?
+  retryCount   Int       @default(0)
+  maxRetries   Int       @default(3)
+  resultUrl    String?
+  errorMessage String?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+enum ComplianceStatus {
+  PENDING
+  APPROVED
+  NEEDS_REVIEW
+  REJECTED
+}
+
+enum JobStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+  NEEDS_REVIEW
+}
