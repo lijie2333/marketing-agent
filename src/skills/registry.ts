@@ -46,3 +46,7 @@ class SkillRegistry {
 }
 
 export const skillRegistry = new SkillRegistry();
+
+// Auto-register all skills
+import { brandAnalyzerSkill } from "./brand-analyzer";
+skillRegistry.register(brandAnalyzerSkill);
