@@ -21,9 +21,10 @@ export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { profileId, counts } = await req.json() as {
+  const { profileId, counts, totalVideos: requestedTotal } = await req.json() as {
     profileId: string;
     counts?: Record<string, number>;
+    totalVideos?: number;
   };
 
   const profile = await db.brandProfile.findFirst({
@@ -31,9 +32,8 @@ export async function POST(req: NextRequest) {
   });
   if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
 
-  const totalVideos = counts
-    ? Object.values(counts).reduce((a, b) => a + b, 0)
-    : 50;
+  const totalVideos = requestedTotal ??
+    (counts ? Object.values(counts).reduce((a, b) => a + b, 0) : 50);
 
   // Generate strategy
   const strategyResult = await strategyPlannerSkill.handler({

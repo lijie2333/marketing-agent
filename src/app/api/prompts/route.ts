@@ -21,10 +21,12 @@ export async function PATCH(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { id, ...data } = await req.json() as { id: string; [key: string]: unknown };
+  const { id, content } = await req.json() as { id: string; content?: string };
+  // Only allow editing the prompt content — compliance status and confirmation
+  // are managed by the system, not the user
   await db.prompt.updateMany({
     where: { id, strategy: { brandProfile: { merchantId: session.user.id } } },
-    data,
+    data: { ...(content !== undefined ? { content } : {}) },
   });
   return NextResponse.json({ ok: true });
 }

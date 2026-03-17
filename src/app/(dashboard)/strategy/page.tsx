@@ -22,7 +22,7 @@ export default function StrategyPage() {
     const res = await fetch("/api/strategy", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ profileId: profile.id, counts: {} }),
+      body: JSON.stringify({ profileId: profile.id, totalVideos: count }),
     });
     const { strategyId } = await res.json();
     setLoading(false);
