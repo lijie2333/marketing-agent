@@ -33,6 +33,8 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 !.env.local.example
+!.env.example
+!worker/.env.example
 
 # vercel
 .vercel
@@ -44,3 +46,10 @@ next-env.d.ts
 # Upload directory (user files should not be committed)
 uploads/*
 !uploads/.gitkeep
+
+/src/generated/prisma
+
+# Worker service
+worker/node_modules
+worker/.jimeng-session
+worker/dist

@@ -1,0 +1,21 @@
+{
+  "name": "marketing-agent-worker",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "ts-node index.ts",
+    "first-login": "FIRST_LOGIN=true ts-node index.ts",
+    "prisma:generate": "prisma generate --schema=../prisma/schema.prisma"
+  },
+  "dependencies": {
+    "@prisma/client": "^7.5.0",
+    "bullmq": "^5.0.0",
+    "dotenv": "^16.0.0",
+    "playwright": "^1.40.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "prisma": "^7.5.0",
+    "ts-node": "^10.0.0",
+    "typescript": "^5.0.0"
+  }
+}
