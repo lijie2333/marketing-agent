@@ -1,0 +1,6 @@
+{
+  "enabledPlugins": {
+    "claude-session-driver@superpowers-marketplace": true,
+    "superpowers@superpowers-marketplace": true
+  }
+}

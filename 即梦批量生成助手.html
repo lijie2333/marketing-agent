@@ -1,0 +1,1196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>即梦批量生成助手</title>
+<style>
+  :root {
+    --primary: #6C5CE7;
+    --primary-light: #A29BFE;
+    --primary-dark: #5A4BD1;
+    --success: #00B894;
+    --warning: #FDCB6E;
+    --danger: #E17055;
+    --bg: #0F0F1A;
+    --bg-card: #1A1A2E;
+    --bg-input: #16213E;
+    --text: #EAEAEA;
+    --text-muted: #8892A8;
+    --border: #2A2A4A;
+    --glow: rgba(108, 92, 231, 0.3);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+  body::before {
+    content: '';
+    position: fixed; top: -50%; left: -50%; width: 200%; height: 200%;
+    background: radial-gradient(ellipse at 30% 20%, rgba(108,92,231,0.08) 0%, transparent 50%),
+                radial-gradient(ellipse at 70% 80%, rgba(0,184,148,0.05) 0%, transparent 50%);
+    z-index: -1;
+  }
+  .container { max-width: 860px; margin: 0 auto; padding: 30px 20px; }
+  .header { text-align: center; margin-bottom: 28px; }
+  .header h1 {
+    font-size: 28px; font-weight: 700;
+    background: linear-gradient(135deg, var(--primary-light), var(--success));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    margin-bottom: 6px;
+  }
+  .header p { color: var(--text-muted); font-size: 14px; }
+
+  .card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 16px; padding: 24px; margin-bottom: 18px;
+  }
+  .card-title {
+    font-size: 15px; font-weight: 600; margin-bottom: 14px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .step-num {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; color: #fff; flex-shrink: 0;
+  }
+
+  textarea {
+    width: 100%; min-height: 180px;
+    background: var(--bg-input); border: 1px solid var(--border); border-radius: 12px;
+    color: var(--text); font-size: 14px; line-height: 1.8; padding: 14px;
+    resize: vertical; font-family: 'SF Mono','Fira Code','Consolas', monospace;
+    transition: border-color .3s, box-shadow .3s;
+  }
+  textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--glow); }
+  textarea::placeholder {
+    font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    color: var(--text-muted);
+  }
+
+  .text-stats { display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: var(--text-muted); }
+  .text-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .btn-small {
+    padding: 5px 12px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--bg-input); color: var(--text-muted); font-size: 12px;
+    cursor: pointer; transition: all .2s;
+  }
+  .btn-small:hover { border-color: var(--primary); color: var(--text); }
+
+  .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 600px) { .settings-grid { grid-template-columns: 1fr; } }
+  .setting-item { display: flex; flex-direction: column; gap: 5px; }
+  .setting-item label { font-size: 13px; color: var(--text-muted); font-weight: 500; }
+  .setting-item input, .setting-item select {
+    background: var(--bg-input); border: 1px solid var(--border); border-radius: 10px;
+    color: var(--text); font-size: 14px; padding: 9px 12px;
+    transition: border-color .3s, box-shadow .3s;
+  }
+  .setting-item input:focus, .setting-item select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--glow); }
+  .setting-hint { font-size: 11px; color: var(--text-muted); opacity: .7; }
+
+  .btn-big {
+    display: block; width: 100%; padding: 16px; border-radius: 14px;
+    font-size: 17px; font-weight: 700; cursor: pointer; border: none;
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    color: #fff; box-shadow: 0 4px 20px rgba(108,92,231,0.45);
+    transition: all .3s; text-align: center;
+  }
+  .btn-big:hover { box-shadow: 0 6px 30px rgba(108,92,231,0.65); transform: translateY(-1px); }
+  .btn-big:active { transform: scale(.98); }
+
+  .success-toast {
+    display: none; margin-top: 14px; padding: 14px 18px;
+    background: rgba(0,184,148,0.12); border: 1px solid rgba(0,184,148,0.3);
+    border-radius: 12px; color: var(--success); font-size: 14px;
+    text-align: center; font-weight: 500;
+    animation: fadeIn .3s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+
+  .steps {
+    background: rgba(108,92,231,0.05); border: 1px solid rgba(108,92,231,0.15);
+    border-radius: 14px; padding: 22px; margin-top: 10px;
+  }
+  .steps h3 { font-size: 15px; color: var(--primary-light); margin-bottom: 14px; }
+  .steps ol { padding-left: 20px; display: flex; flex-direction: column; gap: 10px; }
+  .steps li { font-size: 13px; color: var(--text-muted); line-height: 1.7; }
+  .steps li strong { color: var(--text); }
+  .steps li code {
+    background: var(--bg-input); border: 1px solid var(--border); border-radius: 4px;
+    padding: 1px 6px; font-size: 12px; font-family: monospace; color: var(--warning);
+  }
+  .steps .tip {
+    margin-top: 14px; padding: 12px 14px;
+    background: rgba(253,203,110,0.08); border-radius: 8px;
+    font-size: 12px; color: var(--warning); line-height: 1.7;
+  }
+
+  .divider { height: 1px; background: var(--border); margin: 14px 0; }
+
+  .footer-brand {
+    text-align: center; margin-top: 32px; padding: 18px 0 8px;
+    opacity: 0.7; transition: opacity .3s;
+  }
+  .footer-brand:hover { opacity: 1; }
+  .brand-badge {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 8px 20px; border-radius: 20px;
+    background: linear-gradient(135deg, rgba(108,92,231,0.1), rgba(0,184,148,0.08));
+    border: 1px solid rgba(108,92,231,0.2);
+    text-decoration: none; color: var(--text-muted); font-size: 12px;
+    transition: all .3s;
+  }
+  .brand-badge:hover {
+    border-color: var(--primary-light);
+    background: linear-gradient(135deg, rgba(108,92,231,0.18), rgba(0,184,148,0.12));
+    color: var(--text);
+    box-shadow: 0 2px 16px rgba(108,92,231,0.15);
+  }
+  .brand-logo {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary), var(--success));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 800; color: #fff;
+    letter-spacing: -0.5px; flex-shrink: 0;
+  }
+  .brand-text { font-weight: 600; letter-spacing: 0.5px; }
+  .brand-divider { color: var(--border); }
+
+  .method-tabs { display: flex; gap: 4px; background: var(--bg-input); border-radius: 10px; padding: 4px; margin-bottom: 14px; }
+  .method-tab {
+    flex: 1; padding: 8px; border-radius: 8px; border: none;
+    background: transparent; color: var(--text-muted); font-size: 13px;
+    font-weight: 500; cursor: pointer; transition: all .2s; text-align: center;
+  }
+  .method-tab.active { background: var(--primary); color: #fff; }
+  .method-tab:hover:not(.active) { color: var(--text); }
+  .method-panel { display: none; }
+  .method-panel.active { display: block; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>即梦批量生成助手</h1>
+    <p>自动输入文本到即梦并点击生成，全程无需手动操作</p>
+  </div>
+
+  <!-- Step 1 -->
+  <div class="card">
+    <div class="card-title"><span class="step-num">1</span> 输入待生成的提示词</div>
+    <textarea id="textInput" placeholder="每行一条提示词，例如：&#10;&#10;一只可爱的猫咪坐在窗台上&#10;夕阳下的海边城市&#10;赛博朋克风格的未来都市"></textarea>
+    <div class="text-stats">
+      <span id="lineCount">共 0 条</span>
+      <span id="charCount">0 字符</span>
+    </div>
+    <div class="text-actions">
+      <button class="btn-small" onclick="doPaste()">📋 粘贴</button>
+      <button class="btn-small" onclick="textInput.value='';updateStats()">🗑️ 清空</button>
+      <button class="btn-small" onclick="dedup()">🔄 去重</button>
+      <button class="btn-small" onclick="trimEmpty()">✂️ 去空行</button>
+    </div>
+  </div>
+
+  <!-- Step 2 -->
+  <div class="card">
+    <div class="card-title"><span class="step-num">2</span> 运行设置</div>
+    <div class="settings-grid">
+      <div class="setting-item">
+        <label>每轮等待时间（秒）</label>
+        <input type="number" id="interval" value="30" min="5" max="600" step="5">
+        <span class="setting-hint">即梦生成一张图通常需要 20~60 秒</span>
+      </div>
+      <div class="setting-item">
+        <label>执行条数</label>
+        <input type="number" id="count" value="0" min="0" max="9999">
+        <span class="setting-hint">0 = 全部执行</span>
+      </div>
+      <div class="setting-item">
+        <label>提交方式</label>
+        <select id="submitMethod">
+          <option value="enter">按 Enter 键发送</option>
+          <option value="click">点击"生成"按钮</option>
+        </select>
+        <span class="setting-hint">根据即梦界面选择合适的提交方式</span>
+      </div>
+      <div class="setting-item">
+        <label>输入延迟（毫秒）</label>
+        <input type="number" id="typeDelay" value="300" min="100" max="3000" step="100">
+        <span class="setting-hint">填充文本后等待多久再提交</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 3 -->
+  <div class="card">
+    <div class="card-title"><span class="step-num">3</span> 生成脚本并使用</div>
+
+    <div class="method-tabs">
+      <button class="method-tab active" onclick="switchMethod(this,'bookmark')">方法一：书签栏拖拽（推荐）</button>
+      <button class="method-tab" onclick="switchMethod(this,'console')">方法二：控制台粘贴</button>
+    </div>
+
+    <div class="method-panel active" id="panel-bookmark">
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;line-height:1.7;">点击下方按钮生成书签，然后<strong style="color:var(--text);">将紫色按钮拖拽到浏览器书签栏</strong>。之后打开即梦页面，点击书签即可运行，无需打开控制台。</p>
+      <button class="btn-big" onclick="generateBookmarklet()" style="margin-bottom:14px;">🔖 点击生成书签</button>
+      <div id="bookmarkletArea" style="display:none;">
+        <div style="text-align:center;padding:20px;background:var(--bg-input);border-radius:12px;border:2px dashed var(--primary);">
+          <p style="font-size:14px;color:var(--warning);margin-bottom:12px;font-weight:600;">⬇ 请将下方按钮拖到浏览器的书签栏 ⬇</p>
+          <a id="bookmarkletLink" href="#" style="display:inline-block;padding:12px 28px;background:linear-gradient(135deg,#6C5CE7,#5A4BD1);color:#fff;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px;box-shadow:0 4px 15px rgba(108,92,231,0.4);cursor:grab;">📌 即梦批量助手</a>
+          <p style="font-size:12px;color:var(--text-muted);margin-top:12px;line-height:1.6;">拖拽完成后，打开即梦网页（jimeng.jianying.com），点击书签栏中的「即梦批量助手」即可</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="method-panel" id="panel-console">
+      <button class="btn-big" onclick="copyScript()">📋 复制自动化脚本到剪贴板</button>
+      <div class="success-toast" id="copyToast">✅ 脚本已复制！请切换到即梦页面，按 F12 → Console → 粘贴运行</div>
+      <div style="margin-top:14px;padding:14px;background:rgba(253,203,110,0.08);border:1px solid rgba(253,203,110,0.2);border-radius:10px;">
+        <p style="font-size:13px;color:var(--warning);font-weight:600;margin-bottom:8px;">⚠ Chrome 浏览器首次粘贴需要额外操作：</p>
+        <ol style="padding-left:18px;font-size:12px;color:var(--text-muted);line-height:1.8;">
+          <li>按 <code>F12</code> 打开开发者工具，切换到 <code>Console</code> 标签</li>
+          <li>在控制台中先输入 <code style="color:var(--warning);background:var(--bg-input);padding:1px 6px;border-radius:3px;">allow pasting</code> 然后按回车</li>
+          <li>再粘贴脚本（Ctrl+V / ⌘+V），按回车运行</li>
+        </ol>
+        <p style="font-size:11px;color:var(--text-muted);margin-top:8px;opacity:0.7;">这是 Chrome 的安全保护机制，只需操作一次，后续无需再输入。</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Instructions -->
+  <div class="steps">
+    <h3>使用步骤（书签栏方式，最简单）</h3>
+    <ol>
+      <li>在上方文本框中<strong>粘贴所有提示词</strong>（每行一条）</li>
+      <li>根据需要调整<strong>等待时间</strong>和<strong>提交方式</strong></li>
+      <li>点击<strong>「生成书签」</strong>按钮</li>
+      <li>将生成的<strong style="color:var(--primary-light);">紫色按钮拖拽到浏览器书签栏</strong>（地址栏下方那一条）</li>
+      <li>打开<strong>即梦网页</strong>（jimeng.jianying.com）</li>
+      <li>点击书签栏中的<strong>「即梦批量助手」</strong>书签</li>
+      <li>页面右下角会出现<strong>浮动控制面板</strong></li>
+      <li>脚本会尝试<strong>自动识别</strong>输入框和按钮，如未识别到可手动点选</li>
+      <li>点击面板上的<strong>「开始」</strong>，脚本自动循环：填充文本 → 提交 → 等待 → 下一条</li>
+      <li>全部完成后<strong>播放提示音</strong>通知你</li>
+    </ol>
+    <div class="tip">
+      💡 书签栏没有显示？在 Chrome 中按 <code>Ctrl+Shift+B</code>（Mac: <code>⌘+Shift+B</code>）即可显示/隐藏书签栏。书签只需拖拽一次，之后每次想用直接点击书签就行。
+    </div>
+  </div>
+
+  <div class="footer-brand">
+    <span class="brand-badge">
+      <span class="brand-logo">B</span>
+      <span class="brand-text">Crafted by Brant</span>
+      <span class="brand-divider">|</span>
+      <span style="font-size:11px;">即梦批量生成助手</span>
+    </span>
+  </div>
+</div>
+
+<!-- ==================== 自动化脚本模板 ==================== -->
+<script type="text/template" id="scriptTemplate">
+(function() {
+  'use strict';
+
+  /* ===== 配置 ===== */
+  var TEXTS = __TEXTS__;
+  var INTERVAL = __INTERVAL__;
+  var SUBMIT_METHOD = '__SUBMIT_METHOD__';
+  var TYPE_DELAY = __TYPE_DELAY__;
+
+  /* ===== 防重复 ===== */
+  if (window.__jm_helper) { try { window.__jm_helper.destroy(); } catch(e){} }
+
+  /* ===== 音频 ===== */
+  var _actx = null;
+  function actx() { if (!_actx) _actx = new (window.AudioContext || window.webkitAudioContext)(); return _actx; }
+  function beep(freq, dur, vol) {
+    try {
+      var c = actx(), o = c.createOscillator(), g = c.createGain();
+      o.connect(g); g.connect(c.destination);
+      o.frequency.value = freq; o.type = 'sine';
+      g.gain.setValueAtTime(vol, c.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + dur);
+      o.start(c.currentTime); o.stop(c.currentTime + dur);
+    } catch(e){}
+  }
+  function sndTick() { beep(880, 0.1, 0.25); setTimeout(function(){ beep(1100, 0.1, 0.25); }, 120); }
+  function sndDone() { beep(660,0.2,0.4); setTimeout(function(){beep(880,0.2,0.4);},250); setTimeout(function(){beep(1100,0.35,0.5);},500); }
+
+  /* ===== 状态 ===== */
+  var state = { running: false, paused: false, idx: 0, inputEl: null, btnEl: null, timer: null };
+
+  /* ===== Shadow DOM 浮动面板 ===== */
+  var host = document.createElement('div');
+  host.id = '__jm_host';
+  host.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:2147483647;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;';
+  var shadow = host.attachShadow({ mode: 'open' });
+
+  shadow.innerHTML = '\
+<style>\
+  * { margin:0; padding:0; box-sizing:border-box; }\
+  :host { font-size:13px; color:#eaeaea; }\
+  .panel { width:340px; background:#1a1a2e; border:1px solid #2a2a4a; border-radius:14px; box-shadow:0 8px 32px rgba(0,0,0,0.5); overflow:hidden; }\
+  .hdr { display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:linear-gradient(135deg,#6C5CE7,#5A4BD1); cursor:move; user-select:none; }\
+  .hdr-title { font-size:13px; font-weight:700; color:#fff; }\
+  .hdr-btns { display:flex; gap:6px; }\
+  .hdr-btn { width:22px; height:22px; border-radius:50%; border:none; cursor:pointer; font-size:12px; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.2); color:#fff; transition:background .2s; }\
+  .hdr-btn:hover { background:rgba(255,255,255,0.35); }\
+  .body { padding:14px; }\
+  .body.hidden { display:none; }\
+  .section { margin-bottom:12px; }\
+  .section:last-child { margin-bottom:0; }\
+  .label { font-size:11px; color:#8892A8; margin-bottom:6px; text-transform:uppercase; letter-spacing:.5px; font-weight:600; }\
+  .el-row { display:flex; align-items:center; gap:8px; margin-bottom:6px; }\
+  .el-status { font-size:12px; }\
+  .el-status.ok { color:#00B894; }\
+  .el-status.no { color:#E17055; }\
+  .pick-btn { padding:4px 10px; border-radius:6px; border:1px solid #2a2a4a; background:#16213E; color:#A29BFE; font-size:11px; cursor:pointer; transition:all .2s; }\
+  .pick-btn:hover { border-color:#6C5CE7; background:rgba(108,92,231,0.15); }\
+  .pick-btn.picking { background:#6C5CE7; color:#fff; border-color:#6C5CE7; }\
+  .progress-wrap { background:#16213E; border-radius:6px; height:6px; overflow:hidden; margin-bottom:8px; }\
+  .progress-bar { height:100%; background:linear-gradient(90deg,#6C5CE7,#00B894); border-radius:6px; transition:width .4s; width:0%; }\
+  .progress-text { font-size:12px; color:#8892A8; display:flex; justify-content:space-between; }\
+  .preview { background:#16213E; border:1px solid #2a2a4a; border-radius:8px; padding:10px; font-size:12px; line-height:1.5; max-height:60px; overflow-y:auto; color:#eaeaea; word-break:break-all; margin-top:8px; }\
+  .countdown { text-align:center; padding:8px 0; }\
+  .cd-num { font-size:32px; font-weight:700; background:linear-gradient(135deg,#A29BFE,#00B894); -webkit-background-clip:text; -webkit-text-fill-color:transparent; font-variant-numeric:tabular-nums; }\
+  .cd-label { font-size:11px; color:#8892A8; margin-top:2px; }\
+  .ctrls { display:flex; gap:8px; justify-content:center; }\
+  .btn { padding:8px 20px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; border:none; transition:all .2s; }\
+  .btn:active { transform:scale(.96); }\
+  .btn-go { background:linear-gradient(135deg,#6C5CE7,#5A4BD1); color:#fff; box-shadow:0 2px 10px rgba(108,92,231,0.4); }\
+  .btn-go:hover { box-shadow:0 4px 16px rgba(108,92,231,0.6); }\
+  .btn-go:disabled { opacity:.45; cursor:not-allowed; }\
+  .btn-pause { background:rgba(253,203,110,0.15); color:#FDCB6E; border:1px solid rgba(253,203,110,0.3); }\
+  .btn-stop { background:rgba(225,112,85,0.15); color:#E17055; border:1px solid rgba(225,112,85,0.3); }\
+  .btn-resume { background:rgba(0,184,148,0.15); color:#00B894; border:1px solid rgba(0,184,148,0.3); }\
+  .status { text-align:center; padding:8px; border-radius:8px; font-size:12px; font-weight:500; margin-top:8px; }\
+  .status.run { background:rgba(108,92,231,0.1); border:1px solid rgba(108,92,231,0.2); color:#A29BFE; }\
+  .status.pause { background:rgba(253,203,110,0.1); border:1px solid rgba(253,203,110,0.2); color:#FDCB6E; }\
+  .status.done { background:rgba(0,184,148,0.1); border:1px solid rgba(0,184,148,0.2); color:#00B894; }\
+  .status.err { background:rgba(225,112,85,0.1); border:1px solid rgba(225,112,85,0.2); color:#E17055; }\
+  .divider { height:1px; background:#2a2a4a; margin:6px 0 10px; }\
+  .btn-sm { padding:5px 12px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; border:none; transition:all .2s; }\
+  .btn-sm:active { transform:scale(.96); }\
+  .btn-sm-go { background:linear-gradient(135deg,#6C5CE7,#5A4BD1); color:#fff; }\
+  .btn-sm-green { background:linear-gradient(135deg,#00B894,#00CEC9); color:#1a1a2e; }\
+  .btn-sm-gray { background:#16213E; color:#8892A8; border:1px solid #2a2a4a; }\
+  .btn-sm-gray:hover { border-color:#6C5CE7; color:#A29BFE; }\
+  .dl-info { font-size:12px; color:#8892A8; margin-top:6px; line-height:1.6; }\
+</style>\
+<div class="panel">\
+  <div class="hdr" id="hdr">\
+    <span class="hdr-title">即梦批量助手</span>\
+    <div class="hdr-btns">\
+      <button class="hdr-btn" id="btnMin" title="最小化">─</button>\
+      <button class="hdr-btn" id="btnClose" title="关闭">✕</button>\
+    </div>\
+  </div>\
+  <div class="body" id="panelBody">\
+    <div class="section">\
+      <div class="label">元素绑定</div>\
+      <div class="el-row">\
+        <span class="el-status no" id="inputStatus">✗ 输入框未选择</span>\
+        <button class="pick-btn" id="pickInput">点击选择</button>\
+      </div>\
+      <div class="el-row">\
+        <span class="el-status no" id="btnStatus">✗ 生成按钮未选择</span>\
+        <button class="pick-btn" id="pickBtn">点击选择</button>\
+      </div>\
+    </div>\
+    <div class="section">\
+      <div class="label">进度</div>\
+      <div class="progress-wrap"><div class="progress-bar" id="progBar"></div></div>\
+      <div class="progress-text"><span id="progText">0 / ' + TEXTS.length + '</span><span id="progPct">0%</span></div>\
+      <div class="preview" id="preview" style="display:none;"></div>\
+    </div>\
+    <div class="countdown" id="cdArea" style="display:none;">\
+      <div class="cd-num" id="cdNum">0</div>\
+      <div class="cd-label">秒后自动填充下一条</div>\
+    </div>\
+    <div class="ctrls" id="ctrlsMain">\
+      <button class="btn btn-go" id="btnStart">▶ 开始</button>\
+    </div>\
+    <div class="ctrls" id="ctrlsRunning" style="display:none;">\
+      <button class="btn btn-pause" id="btnPause">⏸ 暂停</button>\
+      <button class="btn btn-stop" id="btnStop">⏹ 停止</button>\
+    </div>\
+    <div class="status" id="statusBar" style="display:none;"></div>\
+    <div class="divider"></div>\
+    <div class="section">\
+      <div class="label">批量下载视频</div>\
+      <div style="font-size:11px;color:#8892A8;margin-bottom:8px;line-height:1.6;">第一步：悬停一个视频让下载按钮出现；第二步：点击「识别」再点那个下载按钮；第三步：一键自动滚动下载全部。</div>\
+      <div class="ctrls" style="flex-wrap:wrap;">\
+        <button class="btn-sm btn-sm-go" id="btnTeach">👆 第一步：识别下载按钮</button>\
+      </div>\
+      <div class="dl-info" id="dlInfo" style="display:none;"></div>\
+      <div class="ctrls" id="dlCtrls" style="display:none;margin-top:8px;flex-wrap:wrap;gap:6px;">\
+        <button class="btn-sm btn-sm-green" id="btnDlAll">📥 第二步：自动滚动+全部下载</button>\
+        <button class="btn-sm btn-sm-gray" id="btnDlStop">⏹ 停止</button>\
+      </div>\
+      <div class="progress-wrap" id="dlProgWrap" style="display:none;margin-top:8px;"><div class="progress-bar" id="dlProgBar"></div></div>\
+      <div class="status" id="dlStatusBar" style="display:none;"></div>\
+    </div>\
+  </div>\
+</div>';
+
+  document.body.appendChild(host);
+
+  /* ===== 获取面板元素 ===== */
+  var $ = function(id) { return shadow.getElementById(id); };
+  var panelEl = shadow.querySelector('.panel');
+  var panelBody = $('panelBody');
+
+  /* ===== 拖拽 ===== */
+  var dragging = false, dx = 0, dy = 0;
+  $('hdr').addEventListener('mousedown', function(e) {
+    dragging = true;
+    dx = e.clientX - host.getBoundingClientRect().left;
+    dy = e.clientY - host.getBoundingClientRect().top;
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', function(e) {
+    if (!dragging) return;
+    host.style.left = (e.clientX - dx) + 'px';
+    host.style.top = (e.clientY - dy) + 'px';
+    host.style.right = 'auto';
+    host.style.bottom = 'auto';
+  });
+  document.addEventListener('mouseup', function() { dragging = false; });
+
+  /* ===== 最小化/关闭 ===== */
+  $('btnMin').addEventListener('click', function() {
+    var hidden = panelBody.classList.toggle('hidden');
+    this.textContent = hidden ? '□' : '─';
+  });
+  $('btnClose').addEventListener('click', function() {
+    if (state.running && !confirm('自动化正在运行，确定关闭？')) return;
+    destroy();
+  });
+
+  /* ===== 元素选择器 ===== */
+  var pickingFor = null;
+  var highlightOverlay = document.createElement('div');
+  highlightOverlay.style.cssText = 'position:fixed;pointer-events:none;border:3px solid #6C5CE7;border-radius:4px;background:rgba(108,92,231,0.15);z-index:2147483646;display:none;transition:all .1s;';
+  document.body.appendChild(highlightOverlay);
+
+  function startPick(target) {
+    pickingFor = target;
+    var btn = target === 'input' ? $('pickInput') : $('pickBtn');
+    btn.classList.add('picking');
+    btn.textContent = '请点击页面上的元素...';
+    document.addEventListener('mousemove', onPickMove, true);
+    document.addEventListener('click', onPickClick, true);
+    highlightOverlay.style.display = 'block';
+  }
+  function stopPick() {
+    pickingFor = null;
+    $('pickInput').classList.remove('picking');
+    $('pickInput').textContent = state.inputEl ? '重新选择' : '点击选择';
+    $('pickBtn').classList.remove('picking');
+    $('pickBtn').textContent = state.btnEl ? '重新选择' : '点击选择';
+    document.removeEventListener('mousemove', onPickMove, true);
+    document.removeEventListener('click', onPickClick, true);
+    highlightOverlay.style.display = 'none';
+  }
+  function onPickMove(e) {
+    if (host.contains(e.target)) { highlightOverlay.style.display = 'none'; return; }
+    var r = e.target.getBoundingClientRect();
+    highlightOverlay.style.display = 'block';
+    highlightOverlay.style.left = r.left + 'px';
+    highlightOverlay.style.top = r.top + 'px';
+    highlightOverlay.style.width = r.width + 'px';
+    highlightOverlay.style.height = r.height + 'px';
+  }
+  function onPickClick(e) {
+    if (host.contains(e.target)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    var el = e.target;
+    if (pickingFor === 'input') {
+      state.inputEl = el;
+      $('inputStatus').textContent = '✓ ' + describeEl(el);
+      $('inputStatus').className = 'el-status ok';
+    } else {
+      state.btnEl = el;
+      $('btnStatus').textContent = '✓ ' + describeEl(el);
+      $('btnStatus').className = 'el-status ok';
+    }
+    stopPick();
+    checkReady();
+  }
+
+  function describeEl(el) {
+    var s = el.tagName.toLowerCase();
+    if (el.id) s += '#' + el.id;
+    if (el.className && typeof el.className === 'string') s += '.' + el.className.split(' ')[0].substring(0, 20);
+    var txt = (el.textContent || '').trim().substring(0, 15);
+    if (txt) s += ' "' + txt + '"';
+    return s;
+  }
+
+  $('pickInput').addEventListener('click', function(e) { e.stopPropagation(); stopPick(); startPick('input'); });
+  $('pickBtn').addEventListener('click', function(e) { e.stopPropagation(); stopPick(); startPick('btn'); });
+
+  /* ===== 自动检测 ===== */
+  function autoDetect() {
+    /* 输入框 */
+    var candidates = document.querySelectorAll('textarea, [contenteditable="true"], input[type="text"]');
+    for (var i = 0; i < candidates.length; i++) {
+      var c = candidates[i];
+      if (c.offsetWidth > 100 && c.offsetHeight > 30 && !host.contains(c)) {
+        var ph = (c.getAttribute('placeholder') || '').toLowerCase();
+        if (ph.indexOf('描述') > -1 || ph.indexOf('输入') > -1 || ph.indexOf('prompt') > -1 || ph.indexOf('想') > -1 || c.tagName === 'TEXTAREA') {
+          state.inputEl = c;
+          $('inputStatus').textContent = '✓ 自动检测: ' + describeEl(c);
+          $('inputStatus').className = 'el-status ok';
+          $('pickInput').textContent = '重新选择';
+          break;
+        }
+      }
+    }
+    /* 如果没找到 textarea，尝试 contenteditable */
+    if (!state.inputEl) {
+      var editables = document.querySelectorAll('[contenteditable="true"]');
+      for (var j = 0; j < editables.length; j++) {
+        var ed = editables[j];
+        if (ed.offsetWidth > 100 && ed.offsetHeight > 20 && !host.contains(ed)) {
+          state.inputEl = ed;
+          $('inputStatus').textContent = '✓ 自动检测: ' + describeEl(ed);
+          $('inputStatus').className = 'el-status ok';
+          $('pickInput').textContent = '重新选择';
+          break;
+        }
+      }
+    }
+    /* 生成按钮 */
+    var btns = document.querySelectorAll('button, [role="button"], a.btn, div[class*="btn"], div[class*="submit"], div[class*="generate"]');
+    for (var k = 0; k < btns.length; k++) {
+      var b = btns[k];
+      var t = (b.textContent || '').trim();
+      if (!host.contains(b) && (t === '生成' || t.indexOf('生成') > -1 || t === 'Generate')) {
+        state.btnEl = b;
+        $('btnStatus').textContent = '✓ 自动检测: ' + describeEl(b);
+        $('btnStatus').className = 'el-status ok';
+        $('pickBtn').textContent = '重新选择';
+        break;
+      }
+    }
+    checkReady();
+  }
+  autoDetect();
+
+  function checkReady() {
+    var ready = state.inputEl && (SUBMIT_METHOD === 'enter' || state.btnEl);
+    $('btnStart').disabled = !ready;
+    if (SUBMIT_METHOD === 'enter' && state.inputEl) {
+      $('btnStatus').textContent = '✓ 使用 Enter 键提交（无需选择按钮）';
+      $('btnStatus').className = 'el-status ok';
+    }
+  }
+  checkReady();
+
+  /* ===== 文本填充（多策略） ===== */
+  function fillText(el, text) {
+    el.focus();
+    /* 先清空 */
+    if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
+      el.select();
+    } else {
+      /* contenteditable */
+      try { document.execCommand('selectAll', false, null); } catch(e){}
+    }
+    /* 策略1: execCommand insertText（最兼容 React/Vue） */
+    var ok = false;
+    try { ok = document.execCommand('insertText', false, text); } catch(e){}
+    var cur = el.value !== undefined ? el.value : el.textContent;
+    if (ok && cur.indexOf(text) > -1) return;
+    /* 策略2: React synthetic setter */
+    if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
+      var proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      var setter = Object.getOwnPropertyDescriptor(proto, 'value');
+      if (setter && setter.set) {
+        setter.set.call(el, text);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        return;
+      }
+    }
+    /* 策略3: contenteditable 直接设置 */
+    el.textContent = text;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  /* ===== 提交 ===== */
+  function doSubmit() {
+    if (SUBMIT_METHOD === 'enter') {
+      state.inputEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+      state.inputEl.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+      state.inputEl.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+    } else {
+      if (state.btnEl) state.btnEl.click();
+    }
+  }
+
+  /* ===== UI 更新 ===== */
+  function updateProg() {
+    var pct = TEXTS.length > 0 ? Math.round((state.idx / TEXTS.length) * 100) : 0;
+    $('progBar').style.width = pct + '%';
+    $('progText').textContent = state.idx + ' / ' + TEXTS.length;
+    $('progPct').textContent = pct + '%';
+  }
+  function setStatusMsg(cls, msg) {
+    var sb = $('statusBar');
+    sb.style.display = 'block';
+    sb.className = 'status ' + cls;
+    sb.textContent = msg;
+  }
+
+  /* ===== 主循环 ===== */
+  function sleep(ms) { return new Promise(function(r) { state.timer = setTimeout(r, ms); }); }
+
+  async function runLoop() {
+    state.running = true;
+    state.paused = false;
+    state.idx = 0;
+    $('ctrlsMain').style.display = 'none';
+    $('ctrlsRunning').style.display = 'flex';
+    setStatusMsg('run', '运行中...');
+
+    for (var i = 0; i < TEXTS.length; i++) {
+      if (!state.running) break;
+      while (state.paused) { await sleep(200); if (!state.running) break; }
+      if (!state.running) break;
+
+      state.idx = i;
+      updateProg();
+      var text = TEXTS[i];
+      $('preview').style.display = 'block';
+      $('preview').textContent = '▶ ' + text;
+      setStatusMsg('run', '正在填充第 ' + (i + 1) + ' 条...');
+
+      /* 填充文本 */
+      fillText(state.inputEl, text);
+      await sleep(TYPE_DELAY);
+      if (!state.running) break;
+
+      /* 提交 */
+      doSubmit();
+      sndTick();
+      setStatusMsg('run', '已提交第 ' + (i + 1) + ' / ' + TEXTS.length + ' 条');
+
+      /* 等待（最后一条不等） */
+      if (i < TEXTS.length - 1) {
+        $('cdArea').style.display = 'block';
+        var remain = INTERVAL;
+        while (remain > 0 && state.running) {
+          while (state.paused) { await sleep(200); if (!state.running) break; }
+          $('cdNum').textContent = remain;
+          await sleep(1000);
+          remain--;
+        }
+        $('cdArea').style.display = 'none';
+      }
+    }
+
+    state.idx = TEXTS.length;
+    updateProg();
+
+    if (state.running) {
+      setStatusMsg('done', '全部完成！共处理 ' + TEXTS.length + ' 条');
+      sndDone(); setTimeout(sndDone, 1500);
+    } else {
+      setStatusMsg('err', '已停止');
+    }
+    state.running = false;
+    $('ctrlsMain').style.display = 'flex';
+    $('ctrlsRunning').style.display = 'none';
+  }
+
+  /* ===== 控制按钮 ===== */
+  $('btnStart').addEventListener('click', function() {
+    if (!state.inputEl) { alert('请先选择输入框元素'); return; }
+    if (SUBMIT_METHOD === 'click' && !state.btnEl) { alert('请先选择生成按钮'); return; }
+    runLoop();
+  });
+  $('btnPause').addEventListener('click', function() {
+    state.paused = !state.paused;
+    this.textContent = state.paused ? '▶ 继续' : '⏸ 暂停';
+    this.className = state.paused ? 'btn btn-resume' : 'btn btn-pause';
+    setStatusMsg(state.paused ? 'pause' : 'run', state.paused ? '已暂停' : '运行中...');
+  });
+  $('btnStop').addEventListener('click', function() {
+    state.running = false;
+    state.paused = false;
+    clearTimeout(state.timer);
+  });
+
+  /* ===== 批量下载视频 v4：暴力去 :hover + 全页面扫描 ===== */
+  var dlTeaching = false;
+  var dlRunning = false;
+  var dlData = { sampleBtn: null, sampleHTML: '', sampleTag: '', sampleClasses: [], forceStyle: null, hoverStyle: null };
+
+  /* ===== 核武器：遍历所有 CSS 规则，把 :hover 条件全部去掉 ===== */
+  function nukeHoverCSS() {
+    if (dlData.hoverStyle) return;
+    var newRules = [];
+    try {
+      var sheets = document.styleSheets;
+      for (var s = 0; s < sheets.length; s++) {
+        try {
+          var rules = sheets[s].cssRules || sheets[s].rules;
+          if (!rules) continue;
+          for (var r = 0; r < rules.length; r++) {
+            var rule = rules[r];
+            if (!rule.selectorText || rule.selectorText.indexOf(':hover') === -1) continue;
+            /* 复制这条规则，去掉 :hover，使之无条件生效 */
+            var newSel = rule.selectorText.replace(/:hover/g, '');
+            newRules.push(newSel + '{' + rule.style.cssText + '}');
+          }
+        } catch(e) { /* 跨域样式表会报错，忽略 */ }
+      }
+    } catch(e){}
+    var style = document.createElement('style');
+    style.id = '__jm_nuke_hover';
+    style.textContent = newRules.join('\n');
+    document.head.appendChild(style);
+    dlData.hoverStyle = style;
+    console.log('[即梦批量助手] 已去除 ' + newRules.length + ' 条 :hover CSS 规则');
+  }
+
+  function restoreHoverCSS() {
+    if (dlData.hoverStyle) { dlData.hoverStyle.remove(); dlData.hoverStyle = null; }
+    if (dlData.forceStyle) { dlData.forceStyle.remove(); dlData.forceStyle = null; }
+  }
+
+  /* ===== 额外注入强制可见 CSS ===== */
+  function injectForceCSS() {
+    if (dlData.forceStyle) return;
+    var rules = [];
+    if (dlData.sampleBtn) {
+      var el = dlData.sampleBtn;
+      for (var i = 0; i < 8; i++) {
+        if (!el || el.tagName === 'BODY') break;
+        var cls = typeof el.className === 'string' ? el.className.trim() : '';
+        if (cls) {
+          cls.split(/\s+/).forEach(function(c) {
+            try { rules.push('.' + CSS.escape(c) + '{opacity:1!important;visibility:visible!important;pointer-events:auto!important;display:block!important;}'); } catch(e){}
+          });
+        }
+        el = el.parentElement;
+      }
+    }
+    rules.push('[class*="download"],[class*="Download"]{opacity:1!important;visibility:visible!important;pointer-events:auto!important;}');
+    var style = document.createElement('style');
+    style.id = '__jm_force_show';
+    style.textContent = rules.join('\n');
+    document.head.appendChild(style);
+    dlData.forceStyle = style;
+  }
+
+  /* ===== 模拟完整的鼠标悬停（Mouse + Pointer） ===== */
+  function fullHover(el) {
+    var r = el.getBoundingClientRect();
+    var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    var mo = { bubbles: true, cancelable: true, clientX: cx, clientY: cy, view: window };
+    /* Pointer events（React 17+ 用这个） */
+    try {
+      el.dispatchEvent(new PointerEvent('pointerover', mo));
+      el.dispatchEvent(new PointerEvent('pointerenter', Object.assign({}, mo, {bubbles:false})));
+      el.dispatchEvent(new PointerEvent('pointermove', mo));
+    } catch(e){}
+    /* Mouse events */
+    el.dispatchEvent(new MouseEvent('mouseover', mo));
+    el.dispatchEvent(new MouseEvent('mouseenter', Object.assign({}, mo, {bubbles:false})));
+    el.dispatchEvent(new MouseEvent('mousemove', mo));
+    /* 也给子元素派发 */
+    var kids = el.children;
+    for (var i = 0; i < Math.min(kids.length, 3); i++) {
+      try {
+        kids[i].dispatchEvent(new PointerEvent('pointerover', mo));
+        kids[i].dispatchEvent(new PointerEvent('pointerenter', Object.assign({}, mo, {bubbles:false})));
+      } catch(e){}
+      kids[i].dispatchEvent(new MouseEvent('mouseover', mo));
+      kids[i].dispatchEvent(new MouseEvent('mouseenter', Object.assign({}, mo, {bubbles:false})));
+    }
+  }
+
+  /* ===== 模拟完整的点击（对元素本身+父级都尝试） ===== */
+  function doClick(el) {
+    var r = el.getBoundingClientRect();
+    var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    var o = { bubbles: true, cancelable: true, clientX: cx, clientY: cy, view: window, button: 0 };
+    try { el.dispatchEvent(new PointerEvent('pointerdown', o)); } catch(e){}
+    try { el.dispatchEvent(new PointerEvent('pointerup', o)); } catch(e){}
+    el.dispatchEvent(new MouseEvent('mousedown', o));
+    el.dispatchEvent(new MouseEvent('mouseup', o));
+    el.dispatchEvent(new MouseEvent('click', o));
+    try { el.click(); } catch(e){}
+  }
+  function fullClick(el) {
+    /* 点击元素本身 */
+    doClick(el);
+    /* 也点击父级和祖父级（事件监听器可能在上层） */
+    if (el.parentElement && el.parentElement !== document.body) {
+      doClick(el.parentElement);
+      if (el.parentElement.parentElement && el.parentElement.parentElement !== document.body) {
+        doClick(el.parentElement.parentElement);
+      }
+    }
+  }
+
+  /* ===== 全页面查找所有匹配的下载按钮 ===== */
+  function findAllMatchingButtons() {
+    var results = [];
+    /* 策略1：精确 class 匹配 */
+    if (dlData.sampleClasses.length > 0) {
+      try {
+        var sel = dlData.sampleTag + '.' + dlData.sampleClasses.map(function(c){return CSS.escape(c);}).join('.');
+        var matches = document.querySelectorAll(sel);
+        for (var i = 0; i < matches.length; i++) {
+          if (!host.contains(matches[i]) && !matches[i].hasAttribute('data-jm-done')) results.push(matches[i]);
+        }
+        if (results.length > 0) return results;
+      } catch(e){}
+    }
+    /* 策略2：innerHTML 匹配 */
+    if (dlData.sampleHTML && dlData.sampleTag) {
+      var all = document.querySelectorAll(dlData.sampleTag);
+      for (var j = 0; j < all.length; j++) {
+        if (!host.contains(all[j]) && !all[j].hasAttribute('data-jm-done') && all[j].innerHTML === dlData.sampleHTML) {
+          results.push(all[j]);
+        }
+      }
+      if (results.length > 0) return results;
+    }
+    /* 策略3：全页面关键词搜索 */
+    var cands = document.querySelectorAll('button, a, div, span, [role="button"], [class*="download"], [class*="Download"]');
+    for (var k = 0; k < cands.length; k++) {
+      var el = cands[k];
+      if (host.contains(el) || el.hasAttribute('data-jm-done')) continue;
+      if (el.offsetWidth > 200 || el.offsetHeight > 200) continue;
+      var hint = ((el.textContent||'')+(el.getAttribute('aria-label')||'')+(el.getAttribute('title')||'')).toLowerCase();
+      if (hint.indexOf('下载') > -1 || hint.indexOf('download') > -1) results.push(el);
+    }
+    return results;
+  }
+
+  /* ===== 找滚动容器 ===== */
+  function findScrollContainer() {
+    var el = dlData.sampleBtn;
+    for (var i = 0; i < 20; i++) {
+      if (!el || el === document.body || el === document.documentElement) break;
+      el = el.parentElement;
+      if (!el) break;
+      try {
+        var st = getComputedStyle(el);
+        if ((st.overflow === 'auto' || st.overflow === 'scroll' || st.overflowY === 'auto' || st.overflowY === 'scroll') && el.scrollHeight > el.clientHeight + 100) {
+          return el;
+        }
+      } catch(e){}
+    }
+    return null;
+  }
+
+  /* ===== 教学：识别下载按钮 ===== */
+  $('btnTeach').addEventListener('click', function(e) {
+    e.stopPropagation();
+    if (dlTeaching) { stopDlTeach(); return; }
+    dlTeaching = true;
+    this.textContent = '悬停视频让按钮出现，然后点击它...';
+    this.style.background = '#6C5CE7'; this.style.color = '#fff'; this.style.fontSize = '10px';
+    highlightOverlay.style.display = 'block';
+    document.addEventListener('mousemove', onPickMove, true);
+    document.addEventListener('click', onDlTeachClick, true);
+  });
+
+  function stopDlTeach() {
+    dlTeaching = false;
+    var b = $('btnTeach');
+    b.textContent = '👆 第一步：识别下载按钮';
+    b.style.background = ''; b.style.color = ''; b.style.fontSize = '';
+    document.removeEventListener('mousemove', onPickMove, true);
+    document.removeEventListener('click', onDlTeachClick, true);
+    highlightOverlay.style.display = 'none';
+  }
+
+  /* 从点击的元素向上找到真正的「按钮」（跳过 SVG 内部元素） */
+  function resolveClickableButton(el) {
+    var svgTags = ['path','svg','circle','rect','line','polyline','polygon','ellipse','g','use','defs','symbol','text','tspan'];
+    var cur = el;
+    /* 如果点击的是 SVG 内部元素，先跳出 SVG */
+    for (var i = 0; i < 10; i++) {
+      if (!cur || !cur.parentElement) break;
+      var tag = cur.tagName.toLowerCase();
+      if (svgTags.indexOf(tag) === -1) break;
+      cur = cur.parentElement;
+    }
+    /* 再往上找一个有 class 或有意义的容器（通常是 div/button/a） */
+    for (var j = 0; j < 5; j++) {
+      if (!cur || !cur.parentElement || cur === document.body) break;
+      var ctag = cur.tagName.toLowerCase();
+      /* 如果是 button/a 直接返回 */
+      if (ctag === 'button' || ctag === 'a') return cur;
+      /* 如果有 class 且尺寸合理（像个按钮），就用它 */
+      var cls = typeof cur.className === 'string' ? cur.className.trim() : '';
+      if (cls && cur.offsetWidth < 200 && cur.offsetHeight < 200 && cur.offsetWidth > 10) return cur;
+      cur = cur.parentElement;
+    }
+    return cur || el;
+  }
+
+  function onDlTeachClick(e) {
+    if (host.contains(e.target)) return;
+    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+    var rawEl = e.target;
+    var btn = resolveClickableButton(rawEl);
+    dlData.sampleBtn = btn;
+    dlData.sampleHTML = btn.innerHTML;
+    dlData.sampleTag = btn.tagName.toLowerCase();
+    dlData.sampleClasses = (typeof btn.className === 'string' && btn.className.trim()) ? btn.className.trim().split(/\s+/) : [];
+    stopDlTeach();
+
+    var info = $('dlInfo');
+    info.style.display = 'block';
+    info.textContent = '已识别按钮: ' + describeEl(btn) + (rawEl !== btn ? '（已自动从 ' + rawEl.tagName.toLowerCase() + ' 提升到父级按钮）' : '') + '。点击下方开始批量下载。';
+    $('dlCtrls').style.display = 'flex';
+
+    console.log('[即梦批量助手] 识别按钮:', {
+      raw: describeEl(rawEl),
+      resolved: describeEl(btn),
+      tag: dlData.sampleTag,
+      classes: dlData.sampleClasses,
+      element: btn
+    });
+  }
+
+  /* ===== 停止 ===== */
+  $('btnDlStop').addEventListener('click', function() { dlRunning = false; });
+
+  /* ===== 核心下载循环 ===== */
+  $('btnDlAll').addEventListener('click', async function() {
+    if (!dlData.sampleBtn) { alert('请先识别一个下载按钮。'); return; }
+    dlRunning = true;
+    var wrap = $('dlProgWrap'), bar = $('dlProgBar'), st = $('dlStatusBar');
+    wrap.style.display = 'block'; st.style.display = 'block';
+    st.className = 'status run'; bar.style.width = '0%';
+    $('btnDlAll').style.display = 'none';
+
+    /* 第一步：去掉所有 :hover CSS 条件 */
+    st.textContent = '正在去除 :hover 限制...';
+    nukeHoverCSS();
+    injectForceCSS();
+    await sleep(800);
+
+    /* 第二步：模拟悬停整个页面视口区域（让 React 渲染按钮） */
+    st.textContent = '正在激活页面元素...';
+    var allDivs = document.querySelectorAll('div, section, article, li');
+    for (var d = 0; d < allDivs.length; d++) {
+      var div = allDivs[d];
+      if (host.contains(div) || div.offsetWidth < 100 || div.offsetHeight < 100) continue;
+      fullHover(div);
+    }
+    await sleep(1000);
+
+    /* 第三步：找到所有下载按钮 */
+    var buttons = findAllMatchingButtons();
+    st.textContent = '找到 ' + buttons.length + ' 个下载按钮，开始逐个点击...';
+    console.log('[即梦批量助手] 找到按钮:', buttons.length, buttons);
+
+    if (buttons.length > 0) {
+      /* 逐个点击 */
+      var downloaded = 0;
+      for (var i = 0; i < buttons.length; i++) {
+        if (!dlRunning) break;
+        var btn = buttons[i];
+        btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        await sleep(300);
+        /* 先悬停父元素（让按钮保持可见） */
+        if (btn.parentElement) fullHover(btn.parentElement);
+        await sleep(200);
+        /* 强制可见 */
+        btn.style.cssText += ';opacity:1!important;visibility:visible!important;pointer-events:auto!important;';
+        /* 点击 */
+        fullClick(btn);
+        btn.setAttribute('data-jm-done', '1');
+        downloaded++;
+        sndTick();
+        st.textContent = '已点击 ' + downloaded + ' / ' + buttons.length;
+        bar.style.width = Math.round(((i + 1) / buttons.length) * 100) + '%';
+        await sleep(1200);
+      }
+    }
+
+    /* 第四步：向下滚动继续寻找 */
+    var scrollEl = findScrollContainer();
+    var emptyRounds = 0;
+    var totalDownloaded = buttons.length;
+
+    while (dlRunning && emptyRounds < 4) {
+      st.textContent = '向下滚动查找更多...（已下载 ' + totalDownloaded + '）';
+      if (scrollEl) {
+        scrollEl.scrollTop += scrollEl.clientHeight * 0.7;
+      } else {
+        window.scrollBy(0, window.innerHeight * 0.7);
+      }
+      await sleep(2000);
+
+      /* 再次激活新出现的元素 */
+      var newDivs = document.querySelectorAll('div, section, article, li');
+      for (var nd = 0; nd < newDivs.length; nd++) {
+        if (host.contains(newDivs[nd]) || newDivs[nd].offsetWidth < 100) continue;
+        fullHover(newDivs[nd]);
+      }
+      await sleep(800);
+
+      var newBtns = findAllMatchingButtons();
+      if (newBtns.length === 0) {
+        emptyRounds++;
+        continue;
+      }
+      emptyRounds = 0;
+
+      for (var nb = 0; nb < newBtns.length; nb++) {
+        if (!dlRunning) break;
+        var nbtn = newBtns[nb];
+        nbtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        await sleep(300);
+        if (nbtn.parentElement) fullHover(nbtn.parentElement);
+        await sleep(200);
+        nbtn.style.cssText += ';opacity:1!important;visibility:visible!important;pointer-events:auto!important;';
+        fullClick(nbtn);
+        nbtn.setAttribute('data-jm-done', '1');
+        totalDownloaded++;
+        sndTick();
+        st.textContent = '已点击 ' + totalDownloaded + ' 个下载按钮';
+        await sleep(1200);
+      }
+    }
+
+    /* 完成 */
+    restoreHoverCSS();
+    dlRunning = false;
+    bar.style.width = '100%';
+    st.className = 'status done';
+    st.textContent = '全部完成！共点击 ' + totalDownloaded + ' 个下载按钮';
+    $('btnDlAll').style.display = '';
+    sndDone();
+  });
+
+  /* ===== 清理 ===== */
+  function destroy() {
+    state.running = false;
+    dlRunning = false;
+    clearTimeout(state.timer);
+    stopPick();
+    if (dlTeaching) stopDlTeach();
+    restoreHoverCSS();
+    host.remove();
+    highlightOverlay.remove();
+    window.__jm_helper = null;
+  }
+  window.__jm_helper = { destroy: destroy };
+  console.log('%c[即梦批量助手] 已加载！共 ' + TEXTS.length + ' 条文本待处理。', 'color:#6C5CE7;font-weight:bold;font-size:14px;');
+})();
+</script>
+
+<!-- ==================== 主页面逻辑 ==================== -->
+<script>
+  var textInput = document.getElementById('textInput');
+  textInput.addEventListener('input', updateStats);
+
+  function updateStats() {
+    var lines = textInput.value.split('\n').filter(function(l){ return l.trim()!==''; });
+    document.getElementById('lineCount').textContent = '共 ' + lines.length + ' 条';
+    document.getElementById('charCount').textContent = textInput.value.length + ' 字符';
+  }
+
+  function getTexts() {
+    return textInput.value.split('\n').filter(function(l){ return l.trim()!==''; }).map(function(l){ return l.trim(); });
+  }
+
+  async function doPaste() {
+    try {
+      textInput.value = await navigator.clipboard.readText();
+      updateStats();
+    } catch(e) { alert('无法读取剪贴板，请手动 Ctrl+V 粘贴'); }
+  }
+  function dedup() {
+    var seen = {}, out = [];
+    textInput.value.split('\n').forEach(function(l) {
+      var t = l.trim();
+      if (t && !seen[t]) { seen[t] = 1; out.push(t); }
+    });
+    textInput.value = out.join('\n');
+    updateStats();
+  }
+  function trimEmpty() {
+    textInput.value = textInput.value.split('\n').filter(function(l){ return l.trim()!==''; }).join('\n');
+    updateStats();
+  }
+
+  function buildScript() {
+    var texts = getTexts();
+    if (texts.length === 0) { alert('请先输入至少一条提示词！'); return null; }
+
+    var count = parseInt(document.getElementById('count').value) || 0;
+    if (count > 0 && count < texts.length) texts = texts.slice(0, count);
+
+    var interval = parseInt(document.getElementById('interval').value) || 30;
+    var submitMethod = document.getElementById('submitMethod').value;
+    var typeDelay = parseInt(document.getElementById('typeDelay').value) || 300;
+
+    var tpl = document.getElementById('scriptTemplate').textContent;
+    tpl = tpl.replace('__TEXTS__', JSON.stringify(texts));
+    tpl = tpl.replace('__INTERVAL__', interval);
+    tpl = tpl.replace('__SUBMIT_METHOD__', submitMethod);
+    tpl = tpl.replace('__TYPE_DELAY__', typeDelay);
+    return tpl;
+  }
+
+  async function copyScript() {
+    var script = buildScript();
+    if (!script) return;
+    try {
+      await navigator.clipboard.writeText(script);
+    } catch(e) {
+      /* 回退 */
+      var ta = document.createElement('textarea');
+      ta.value = script;
+      ta.style.cssText = 'position:fixed;opacity:0;';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    var toast = document.getElementById('copyToast');
+    toast.style.display = 'block';
+    setTimeout(function(){ toast.style.display = 'none'; }, 6000);
+  }
+
+  function generateBookmarklet() {
+    var script = buildScript();
+    if (!script) return;
+    var encoded = 'javascript:' + encodeURIComponent(script);
+    var link = document.getElementById('bookmarkletLink');
+    link.href = encoded;
+    document.getElementById('bookmarkletArea').style.display = 'block';
+  }
+
+  function switchMethod(el, m) {
+    document.querySelectorAll('.method-tab').forEach(function(t){ t.classList.remove('active'); });
+    document.querySelectorAll('.method-panel').forEach(function(p){ p.classList.remove('active'); });
+    el.classList.add('active');
+    document.getElementById('panel-' + m).classList.add('active');
+  }
+
+  updateStats();
+</script>
+</body>
+</html>
