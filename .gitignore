@@ -40,3 +40,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Upload directory (user files should not be committed)
+uploads/*
+!uploads/.gitkeep
