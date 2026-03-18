@@ -8,7 +8,7 @@ export default function OnboardingPage() {
   const [profileId, setProfileId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleInput(data: { description: string; uploadedFileUrls: string[] }) {
+  async function handleInput(data: { description: string; uploadedFileUrls: string[]; logoUrl?: string }) {
     setError(null);
     try {
       const res = await fetch("/api/agent/run", {

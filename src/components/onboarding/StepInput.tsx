@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 type Mode = "description" | "upload";
 
 interface StepInputProps {
-  onNext: (data: { description: string; uploadedFileUrls: string[] }) => Promise<void>;
+  onNext: (data: { description: string; uploadedFileUrls: string[]; logoUrl?: string }) => Promise<void>;
 }
 
 export default function StepInput({ onNext }: StepInputProps) {
@@ -18,6 +18,8 @@ export default function StepInput({ onNext }: StepInputProps) {
   const [urls, setUrls] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
 
   async function handleFiles(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files || []);
@@ -43,6 +45,21 @@ export default function StepInput({ onNext }: StepInputProps) {
     setUrls((prev) => prev.filter((_, i) => i !== index));
   }
 
+  async function handleLogoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLogoUploading(true);
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch("/api/upload?type=logo", { method: "POST", body: fd });
+    if (res.ok) {
+      const { url } = await res.json() as { url: string };
+      setLogoUrl(url);
+    }
+    setLogoUploading(false);
+    e.target.value = "";
+  }
+
   const canSubmit =
     (mode === "description" && description.trim().length > 10) ||
     (mode === "upload" && urls.length > 0);
@@ -54,6 +71,7 @@ export default function StepInput({ onNext }: StepInputProps) {
       await onNext({
         description: mode === "description" ? description.trim() : "",
         uploadedFileUrls: mode === "upload" ? urls : [],
+        logoUrl: logoUrl ?? undefined,
       });
     } catch {
       // Error is handled by parent, just reset loading
@@ -174,6 +192,46 @@ export default function StepInput({ onNext }: StepInputProps) {
             </p>
           </div>
         )}
+
+        {/* Logo 上传（可选） */}
+        <div className="space-y-2 border-t pt-4">
+          <Label>品牌 Logo（可选）</Label>
+          <p className="text-xs text-muted-foreground">
+            上传后 AI 会在每条视频结尾自动生成落版收尾（像广告片片尾一样）
+          </p>
+          {logoUrl ? (
+            <div className="flex items-center gap-3">
+              <img src={logoUrl} alt="品牌Logo" className="h-12 w-12 object-contain rounded border" />
+              <span className="text-xs text-muted-foreground truncate max-w-[160px]">
+                {logoUrl.split("/").pop()}
+              </span>
+              <button
+                type="button"
+                onClick={() => setLogoUrl(null)}
+                className="text-xs text-destructive hover:underline"
+              >
+                移除
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={handleLogoFile}
+                className="hidden"
+                id="logo-upload"
+              />
+              <label
+                htmlFor="logo-upload"
+                className="cursor-pointer text-sm px-3 py-1.5 rounded border border-border hover:border-muted-foreground transition-colors"
+              >
+                {logoUploading ? "上传中..." : "选择 Logo 图片"}
+              </label>
+              <span className="text-xs text-muted-foreground">JPG / PNG / WEBP，最大 10MB</span>
+            </div>
+          )}
+        </div>
 
         <Button
           onClick={handleSubmit}

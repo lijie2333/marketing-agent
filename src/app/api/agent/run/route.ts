@@ -11,14 +11,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { description, uploadedFileUrls } = await req.json() as {
+  const { description, uploadedFileUrls, logoUrl } = await req.json() as {
     description: string;
     uploadedFileUrls?: string[];
+    logoUrl?: string;
   };
 
   try {
     const profileData = await brandAnalyzerSkill.handler({
       description,
+      merchantId: session.user.id,
       fileUrls: JSON.stringify(uploadedFileUrls || []),
     }) as {
       brandName: string;
@@ -45,6 +47,7 @@ export async function POST(req: NextRequest) {
         videoTone: profileData.videoTone || "",
         complianceNotes: profileData.complianceNotes || [],
         uploadedFileUrls: uploadedFileUrls || [],
+        logoUrl: logoUrl || null,
         questionnaireAnswers: { description },
       },
     });
