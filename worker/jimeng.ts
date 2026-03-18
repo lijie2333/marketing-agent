@@ -38,6 +38,7 @@ export class JimengAutomation {
     content: string;
     duration: number;
     ratio: string;
+    referenceImagePaths?: string[];
   }): Promise<string> {
     if (!this.context) throw new Error("Not initialized");
 
@@ -53,68 +54,46 @@ export class JimengAutomation {
       // Step 1: Configure video parameters (ratio, resolution, duration)
       await this.configureVideoParams(page, params);
 
-      // Step 2: Find and fill input using React-compatible injection
+      // Step 2: Upload reference images if provided (全能参考 / image-to-video)
+      if (params.referenceImagePaths && params.referenceImagePaths.length > 0) {
+        console.log(`[jimeng] Uploading ${params.referenceImagePaths.length} reference image(s)...`);
+        await this.uploadReferenceImages(page, params.referenceImagePaths);
+      }
+
+      // Step 3: Find and fill input using React-compatible injection
       console.log("[jimeng] Filling prompt text...");
-      const fillResult = await page.evaluate((text: string) => {
-        /* ===== 文本填充（3重策略，来自即梦批量生成助手） ===== */
-        function fillText(el: Element, text: string) {
-          const htmlEl = el as HTMLElement;
-          htmlEl.focus();
-
-          // 先清空
+      const escapedContent = JSON.stringify(params.content);
+      const fillResult = await page.evaluate(`(function() {
+        var text = ${escapedContent};
+        var fillIt = (function(el, t) {
+          el.focus();
+          if (el.tagName === "TEXTAREA" || el.tagName === "INPUT") { el.select(); }
+          else { try { document.execCommand("selectAll", false, undefined); } catch(e) {} }
+          var ok = false;
+          try { ok = document.execCommand("insertText", false, t); } catch(e) {}
+          var cur = el.value !== undefined ? el.value : el.textContent;
+          if (ok && cur && cur.indexOf(t) > -1) return true;
           if (el.tagName === "TEXTAREA" || el.tagName === "INPUT") {
-            (el as HTMLInputElement).select();
-          } else {
-            try { document.execCommand("selectAll", false, undefined); } catch (e) {}
+            var proto = el.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+            var desc = Object.getOwnPropertyDescriptor(proto, "value");
+            if (desc && desc.set) { desc.set.call(el, t); el.dispatchEvent(new Event("input",{bubbles:true})); el.dispatchEvent(new Event("change",{bubbles:true})); return true; }
           }
-
-          // 策略1: execCommand insertText
-          let ok = false;
-          try { ok = document.execCommand("insertText", false, text); } catch (e) {}
-          const cur = (el as HTMLInputElement).value !== undefined
-            ? (el as HTMLInputElement).value
-            : el.textContent;
-          if (ok && cur && cur.indexOf(text) > -1) return true;
-
-          // 策略2: React synthetic setter
-          if (el.tagName === "TEXTAREA" || el.tagName === "INPUT") {
-            const proto = el.tagName === "TEXTAREA"
-              ? HTMLTextAreaElement.prototype
-              : HTMLInputElement.prototype;
-            const descriptor = Object.getOwnPropertyDescriptor(proto, "value");
-            if (descriptor && descriptor.set) {
-              descriptor.set.call(el, text);
-              el.dispatchEvent(new Event("input", { bubbles: true }));
-              el.dispatchEvent(new Event("change", { bubbles: true }));
-              return true;
-            }
-          }
-
-          // 策略3: 直接设置
-          el.textContent = text;
-          el.dispatchEvent(new Event("input", { bubbles: true }));
+          el.textContent = t;
+          el.dispatchEvent(new Event("input",{bubbles:true}));
           return true;
+        });
+        var textareas = document.querySelectorAll("textarea");
+        for (var i = 0; i < textareas.length; i++) {
+          var ta = textareas[i];
+          if (ta.offsetWidth > 100 && ta.offsetHeight > 30) { fillIt(ta, text); return { success: true, type: "textarea" }; }
         }
-
-        // 查找输入框
-        const textareas = document.querySelectorAll("textarea");
-        for (let i = 0; i < textareas.length; i++) {
-          const ta = textareas[i];
-          if (ta.offsetWidth > 100 && ta.offsetHeight > 30) {
-            fillText(ta, text);
-            return { success: true, type: "textarea" };
-          }
-        }
-        const editables = document.querySelectorAll('[contenteditable="true"]');
-        for (let i = 0; i < editables.length; i++) {
-          const el = editables[i] as HTMLElement;
-          if (el.offsetWidth > 100 && el.offsetHeight > 20) {
-            fillText(el, text);
-            return { success: true, type: "contenteditable" };
-          }
+        var editables = document.querySelectorAll('[contenteditable="true"]');
+        for (var j = 0; j < editables.length; j++) {
+          var el = editables[j];
+          if (el.offsetWidth > 100 && el.offsetHeight > 20) { fillIt(el, text); return { success: true, type: "contenteditable" }; }
         }
         return { success: false, error: "未找到输入框" };
-      }, params.content);
+      })()`) as { success: boolean; type?: string; error?: string };
 
       console.log(`[jimeng] Fill result:`, fillResult);
       if (!fillResult.success) {
@@ -123,7 +102,7 @@ export class JimengAutomation {
 
       await page.waitForTimeout(800);
 
-      // Step 3: Click submit button using Playwright native click (safer, no parent propagation)
+      // Step 4: Click submit button using Playwright native click (safer, no parent propagation)
       console.log("[jimeng] Looking for submit button...");
       let clicked = false;
 
@@ -171,11 +150,11 @@ export class JimengAutomation {
 
       console.log(`[jimeng] Submit done (clicked=${clicked})`);
 
-      // Step 4: Brief wait then check for immediate rejection (审核不通过)
+      // Step 5: Brief wait then check for immediate rejection (审核不通过)
       await page.waitForTimeout(3000);
       await this.checkContentReview(page);
 
-      // Step 5: Wait for video generation (up to 5 minutes)
+      // Step 6: Wait for video generation (up to 5 minutes)
       console.log("[jimeng] Waiting for video generation (up to 5 minutes)...");
       const videoUrl = await this.waitForVideoUrl(page, 5 * 60 * 1000);
       console.log(`[jimeng] Video URL obtained: ${videoUrl.substring(0, 80)}...`);
@@ -190,182 +169,203 @@ export class JimengAutomation {
   }
 
   /**
-   * Configure video parameters: 9:16 ratio, 1080P resolution, target duration.
-   * Uses page.evaluate ONLY to locate elements (get coordinates), then uses
-   * Playwright native page.mouse.click() to avoid triggering unwanted navigation.
+   * Upload reference images to 即梦 (全能参考 / image-to-video mode).
+   * After upload, the platform labels them @图片1, @图片2, etc.
+   * The prompt text should already contain @图片N references.
+   */
+  private async uploadReferenceImages(page: Page, filePaths: string[]): Promise<void> {
+    // Strategy 1: Find a visible file input accepting images and use setInputFiles directly
+    const fileInputInfo = await page.evaluate(`(function() {
+      var inputs = document.querySelectorAll('input[type="file"]');
+      for (var i = 0; i < inputs.length; i++) {
+        var inp = inputs[i];
+        var accept = inp.accept || "";
+        if (accept.indexOf("image") > -1 || accept === "") {
+          return { found: true, index: i };
+        }
+      }
+      return { found: false };
+    })()`) as { found: boolean; index?: number };
+
+    if (fileInputInfo.found && fileInputInfo.index !== undefined) {
+      const fileInputs = page.locator('input[type="file"]');
+      const targetInput = fileInputs.nth(fileInputInfo.index);
+      try {
+        await targetInput.setInputFiles(filePaths);
+        console.log("[jimeng] Reference images set via file input");
+        await page.waitForTimeout(3000);
+        return;
+      } catch (err) {
+        console.warn("[jimeng] Direct setInputFiles failed, trying upload button:", err);
+      }
+    }
+
+    // Strategy 2: Click an upload/reference button to trigger file chooser
+    const uploadButtonSelectors = [
+      'button[aria-label*="上传"]',
+      'button[aria-label*="图片"]',
+      'button[aria-label*="参考"]',
+      '[class*="upload"] button',
+      '[class*="reference"] button',
+      '[class*="attach"] button',
+    ];
+
+    for (const sel of uploadButtonSelectors) {
+      const btn = page.locator(sel).first();
+      if (await btn.isVisible({ timeout: 1000 }).catch(() => false)) {
+        try {
+          const [fileChooser] = await Promise.all([
+            page.waitForEvent("filechooser", { timeout: 5000 }),
+            btn.click(),
+          ]);
+          await fileChooser.setFiles(filePaths);
+          console.log(`[jimeng] Reference images uploaded via button: ${sel}`);
+          await page.waitForTimeout(3000);
+          return;
+        } catch {
+          continue;
+        }
+      }
+    }
+
+    // Strategy 3: Trigger hidden file input via JS click
+    try {
+      const [fileChooser] = await Promise.all([
+        page.waitForEvent("filechooser", { timeout: 3000 }),
+        page.evaluate(`(function() {
+          var inputs = document.querySelectorAll('input[type="file"]');
+          if (inputs.length > 0) { inputs[0].click(); return true; }
+          return false;
+        })()`),
+      ]);
+      await fileChooser.setFiles(filePaths);
+      console.log("[jimeng] Reference images uploaded via hidden input trigger");
+      await page.waitForTimeout(3000);
+    } catch {
+      console.warn("[jimeng] Could not upload reference images — no upload trigger found. Proceeding without images.");
+    }
+  }
+
+  /**
+   * Verify video parameters in the bottom toolbar.
+   * Default should be: Seedance 2.0 Fast, 9:16, 15s.
+   * Only logs current state — the defaults are already correct.
    */
   private async configureVideoParams(
     page: Page,
     params: { duration: number; ratio: string }
   ): Promise<void> {
-    const targetRatio = params.ratio || "9:16";
-    const targetDuration = params.duration || 15;
-    console.log(`[jimeng] Configuring: ratio=${targetRatio}, resolution=1080P, duration=${targetDuration}s`);
-
-    // --- Step A: Open ratio/resolution panel ---
-    const ratioBtn = await page.evaluate(() => {
-      const els = document.querySelectorAll("*");
-      for (const el of els) {
-        const text = (el as HTMLElement).innerText?.trim();
-        const rect = (el as HTMLElement).getBoundingClientRect();
-        if (rect.top > 700 && text && /\d+:\d+/.test(text) && /\d+P/.test(text) && rect.width < 200 && rect.height < 50) {
-          return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, text };
+    // Read current toolbar state
+    var toolbarInfo = await page.evaluate(`(function() {
+      var els = document.querySelectorAll("*");
+      var ratio = "";
+      var duration = "";
+      for (var i = 0; i < els.length; i++) {
+        var el = els[i];
+        var rect = el.getBoundingClientRect();
+        var text = el.innerText ? el.innerText.trim() : "";
+        if (rect.top > 700 && rect.width < 80 && rect.height < 40) {
+          if (/^\\d+:\\d+$/.test(text)) ratio = text;
+          if (/^\\d+s$/.test(text)) duration = text;
         }
       }
-      return null;
-    });
+      return { ratio: ratio, duration: duration };
+    })()`) as { ratio: string; duration: string };
 
-    if (ratioBtn) {
-      console.log(`[jimeng] Found ratio button: "${ratioBtn.text}" at (${ratioBtn.x}, ${ratioBtn.y})`);
-      await page.mouse.click(ratioBtn.x, ratioBtn.y);
-      await page.waitForTimeout(800);
+    console.log(`[jimeng] Current toolbar: ratio=${toolbarInfo.ratio}, duration=${toolbarInfo.duration}`);
 
-      // Click the target ratio (e.g. "9:16")
-      const ratioOpt = await page.evaluate((target: string) => {
-        const els = document.querySelectorAll("*");
-        for (const el of els) {
-          if (el.children.length === 0 && el.textContent?.trim() === target) {
-            const rect = (el as HTMLElement).getBoundingClientRect();
-            if (rect.width > 0 && rect.height > 0) {
-              return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-            }
-          }
-        }
-        return null;
-      }, targetRatio);
+    var targetRatio = params.ratio || "9:16";
+    var targetDur = (params.duration || 15) + "s";
 
-      if (ratioOpt) {
-        await page.mouse.click(ratioOpt.x, ratioOpt.y);
-        console.log(`[jimeng] Selected ratio: ${targetRatio}`);
-      } else {
-        console.log(`[jimeng] Ratio option "${targetRatio}" not found`);
-      }
-      await page.waitForTimeout(500);
-
-      // Click 1080P
-      const resOpt = await page.evaluate(() => {
-        const els = document.querySelectorAll("*");
-        for (const el of els) {
-          const text = el.textContent?.trim();
-          if (text && /^1080P/.test(text) && el.children.length <= 1) {
-            const rect = (el as HTMLElement).getBoundingClientRect();
-            if (rect.width > 20 && rect.height > 10) {
-              return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-            }
-          }
-        }
-        return null;
-      });
-
-      if (resOpt) {
-        await page.mouse.click(resOpt.x, resOpt.y);
-        console.log("[jimeng] Selected resolution: 1080P");
-      } else {
-        console.log("[jimeng] Resolution option 1080P not found");
-      }
-      await page.waitForTimeout(500);
-
-      // Close panel by clicking the textarea area
-      const textareaPos = await page.evaluate(() => {
-        const ta = document.querySelector("textarea") || document.querySelector("[contenteditable='true']");
-        if (ta) {
-          const rect = (ta as HTMLElement).getBoundingClientRect();
-          return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-        }
-        return null;
-      });
-      if (textareaPos) {
-        await page.mouse.click(textareaPos.x, textareaPos.y);
-      }
-      await page.waitForTimeout(300);
-    } else {
-      console.log("[jimeng] Ratio/resolution button not found in toolbar");
+    if (toolbarInfo.ratio === targetRatio && toolbarInfo.duration === targetDur) {
+      console.log("[jimeng] Parameters already correct, skipping configuration");
+      return;
     }
 
-    // --- Step B: Open duration panel ---
-    const durBtn = await page.evaluate(() => {
-      const els = document.querySelectorAll("*");
-      for (const el of els) {
-        const rect = (el as HTMLElement).getBoundingClientRect();
-        const text = (el as HTMLElement).innerText?.trim();
-        if (rect.top > 700 && text && /^\d+s$/.test(text) && rect.width < 80 && rect.height < 40) {
-          return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, text };
-        }
-      }
-      return null;
-    });
-
-    if (durBtn) {
-      console.log(`[jimeng] Found duration button: "${durBtn.text}" at (${durBtn.x}, ${durBtn.y})`);
-      await page.mouse.click(durBtn.x, durBtn.y);
-      await page.waitForTimeout(800);
-
-      // Click target duration
-      const targetText = `${targetDuration}s`;
-      const durOpt = await page.evaluate((targets: string[]) => {
-        const els = document.querySelectorAll("*");
-        for (const target of targets) {
-          for (const el of els) {
-            if (el.children.length === 0 && el.textContent?.trim() === target) {
-              const rect = (el as HTMLElement).getBoundingClientRect();
-              if (rect.width > 0 && rect.height > 0) {
-                return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, text: target };
-              }
-            }
+    // --- Fix ratio if needed ---
+    if (toolbarInfo.ratio && toolbarInfo.ratio !== targetRatio) {
+      console.log(`[jimeng] Ratio mismatch: ${toolbarInfo.ratio} -> ${targetRatio}`);
+      var ratioBtnPos = await page.evaluate(`(function() {
+        var currentRatio = ${JSON.stringify(toolbarInfo.ratio)};
+        var els = document.querySelectorAll("*");
+        for (var i = 0; i < els.length; i++) {
+          var el = els[i];
+          var rect = el.getBoundingClientRect();
+          var text = el.innerText ? el.innerText.trim() : "";
+          if (rect.top > 700 && text === currentRatio && rect.width < 80) {
+            return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
           }
         }
         return null;
-      }, [targetText, String(targetDuration)]);
+      })()`) as { x: number; y: number } | null;
 
-      if (durOpt) {
-        await page.mouse.click(durOpt.x, durOpt.y);
-        console.log(`[jimeng] Selected duration: ${durOpt.text}`);
-      } else {
-        console.log(`[jimeng] Duration option "${targetText}" not found`);
-      }
-      await page.waitForTimeout(500);
+      if (ratioBtnPos) {
+        await page.mouse.click(ratioBtnPos.x, ratioBtnPos.y);
+        await page.waitForTimeout(800);
 
-      // Close panel
-      const textareaPos2 = await page.evaluate(() => {
-        const ta = document.querySelector("textarea") || document.querySelector("[contenteditable='true']");
-        if (ta) {
-          const rect = (ta as HTMLElement).getBoundingClientRect();
-          return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+        var ratioOpt = await page.evaluate(`(function() {
+          var target = ${JSON.stringify(targetRatio)};
+          var labels = document.querySelectorAll("label.lv-radio");
+          for (var i = 0; i < labels.length; i++) {
+            if (labels[i].textContent && labels[i].textContent.trim() === target) {
+              var rect = labels[i].getBoundingClientRect();
+              if (rect.width > 0) return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+            }
+          }
+          return null;
+        })()`) as { x: number; y: number } | null;
+
+        if (ratioOpt) {
+          await page.mouse.click(ratioOpt.x, ratioOpt.y);
+          console.log(`[jimeng] Selected ratio: ${targetRatio}`);
         }
-        return null;
-      });
-      if (textareaPos2) {
-        await page.mouse.click(textareaPos2.x, textareaPos2.y);
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(300);
       }
-      await page.waitForTimeout(300);
-    } else {
-      console.log("[jimeng] Duration button not found in toolbar");
     }
 
-    // --- Verify ---
-    const finalBar = await page.evaluate(() => {
-      const els = document.querySelectorAll("*");
-      for (const el of els) {
-        const rect = (el as HTMLElement).getBoundingClientRect();
-        const text = (el as HTMLElement).innerText?.trim();
-        if (rect.top > 700 && text && /\d+:\d+/.test(text) && /\d+P/.test(text)) {
-          return text;
+    // --- Fix duration if needed ---
+    if (toolbarInfo.duration && toolbarInfo.duration !== targetDur) {
+      console.log(`[jimeng] Duration mismatch: ${toolbarInfo.duration} -> ${targetDur}`);
+      var durBtnPos = await page.evaluate(`(function() {
+        var currentDur = ${JSON.stringify(toolbarInfo.duration)};
+        var els = document.querySelectorAll("*");
+        for (var i = 0; i < els.length; i++) {
+          var el = els[i];
+          var rect = el.getBoundingClientRect();
+          var text = el.innerText ? el.innerText.trim() : "";
+          if (rect.top > 700 && text === currentDur && rect.width < 80) {
+            return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+          }
         }
-      }
-      return "";
-    });
-    const finalDur = await page.evaluate(() => {
-      const els = document.querySelectorAll("*");
-      for (const el of els) {
-        const rect = (el as HTMLElement).getBoundingClientRect();
-        const text = (el as HTMLElement).innerText?.trim();
-        if (rect.top > 700 && text && /^\d+s$/.test(text) && rect.width < 80) {
-          return text;
+        return null;
+      })()`) as { x: number; y: number } | null;
+
+      if (durBtnPos) {
+        await page.mouse.click(durBtnPos.x, durBtnPos.y);
+        await page.waitForTimeout(800);
+
+        var durOpt = await page.evaluate(`(function() {
+          var target = ${JSON.stringify(targetDur)};
+          var options = document.querySelectorAll("li.lv-select-option");
+          for (var i = 0; i < options.length; i++) {
+            var text = options[i].textContent ? options[i].textContent.trim() : "";
+            if (text === target) {
+              var rect = options[i].getBoundingClientRect();
+              if (rect.width > 0) return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+            }
+          }
+          return null;
+        })()`) as { x: number; y: number } | null;
+
+        if (durOpt) {
+          await page.mouse.click(durOpt.x, durOpt.y);
+          console.log(`[jimeng] Selected duration: ${targetDur}`);
         }
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(300);
       }
-      return "";
-    });
-    console.log(`[jimeng] Final config: ${finalBar} | ${finalDur}`);
+    }
   }
 
   /**
@@ -373,57 +373,25 @@ export class JimengAutomation {
    * Scans for common rejection UI patterns on the page.
    */
   private async checkContentReview(page: Page): Promise<void> {
-    const rejection = await page.evaluate(() => {
-      // Common rejection patterns in 即梦 UI
-      const rejectKeywords = [
-        "审核不通过", "内容违规", "不合规", "违反", "敏感内容",
-        "无法生成", "内容审核", "生成失败", "包含违禁", "不支持生成",
-        "触发安全", "安全审核", "内容不合规",
-      ];
-
-      // Check toast / notification messages
-      const toasts = document.querySelectorAll(
-        ".lv-message, .lv-notification, .lv-toast, [class*='toast'], [class*='message'], [class*='notice'], [class*='alert'], [role='alert']"
-      );
-      for (const el of toasts) {
-        const text = (el as HTMLElement).innerText || "";
-        for (const kw of rejectKeywords) {
-          if (text.includes(kw)) {
-            return text.trim().substring(0, 200);
-          }
-        }
-      }
-
-      // Check modal / dialog
-      const modals = document.querySelectorAll(
-        ".lv-modal, [class*='modal'], [class*='dialog'], [role='dialog']"
-      );
-      for (const el of modals) {
-        const text = (el as HTMLElement).innerText || "";
-        for (const kw of rejectKeywords) {
-          if (text.includes(kw)) {
-            return text.trim().substring(0, 200);
-          }
-        }
-      }
-
-      // Check any visible error-styled elements
-      const errorEls = document.querySelectorAll(
+    const rejection = await page.evaluate(`(function() {
+      var kw = ["审核不通过","内容违规","不合规","违反","敏感内容","无法生成","内容审核","生成失败","包含违禁","不支持生成","触发安全","安全审核","内容不合规"];
+      var sels = [
+        ".lv-message, .lv-notification, .lv-toast, [class*='toast'], [class*='message'], [class*='notice'], [class*='alert'], [role='alert']",
+        ".lv-modal, [class*='modal'], [class*='dialog'], [role='dialog']",
         "[class*='error'], [class*='fail'], [class*='reject'], [class*='warning']"
-      );
-      for (const el of errorEls) {
-        const text = (el as HTMLElement).innerText || "";
-        if (text.length > 2 && text.length < 300) {
-          for (const kw of rejectKeywords) {
-            if (text.includes(kw)) {
-              return text.trim().substring(0, 200);
-            }
+      ];
+      for (var s = 0; s < sels.length; s++) {
+        var els = document.querySelectorAll(sels[s]);
+        for (var i = 0; i < els.length; i++) {
+          var text = els[i].innerText || "";
+          if (s === 2 && (text.length <= 2 || text.length >= 300)) continue;
+          for (var j = 0; j < kw.length; j++) {
+            if (text.indexOf(kw[j]) > -1) return text.trim().substring(0, 200);
           }
         }
       }
-
       return null;
-    });
+    })()`) as string | null;
 
     if (rejection) {
       console.error(`[jimeng] Content review rejection detected: ${rejection}`);
@@ -463,23 +431,29 @@ export class JimengAutomation {
         if (capturedVideoUrl) return capturedVideoUrl;
 
         // Check for video elements in DOM (exclude loading animations)
-        const videoUrl = await page.evaluate((blacklist: string[]) => {
-          const videos = document.querySelectorAll("video");
-          for (let i = 0; i < videos.length; i++) {
-            const src = videos[i].src || videos[i].querySelector("source")?.src;
-            if (src && src.startsWith("http") && !blacklist.some((p) => src.includes(p))) {
-              return src;
+        const videoUrl = await page.evaluate(`(function() {
+          var bl = ${JSON.stringify(URL_BLACKLIST)};
+          var videos = document.querySelectorAll("video");
+          for (var i = 0; i < videos.length; i++) {
+            var source = videos[i].querySelector("source");
+            var src = videos[i].src || (source ? source.src : "");
+            if (src && src.indexOf("http") === 0) {
+              var blocked = false;
+              for (var j = 0; j < bl.length; j++) { if (src.indexOf(bl[j]) > -1) { blocked = true; break; } }
+              if (!blocked) return src;
             }
           }
-          const links = document.querySelectorAll('a[href*=".mp4"], a[download]');
-          for (let i = 0; i < links.length; i++) {
-            const href = (links[i] as HTMLAnchorElement).href;
-            if (href && href.startsWith("http") && !blacklist.some((p) => href.includes(p))) {
-              return href;
+          var links = document.querySelectorAll('a[href*=".mp4"], a[download]');
+          for (var i = 0; i < links.length; i++) {
+            var href = links[i].href;
+            if (href && href.indexOf("http") === 0) {
+              var blocked = false;
+              for (var j = 0; j < bl.length; j++) { if (href.indexOf(bl[j]) > -1) { blocked = true; break; } }
+              if (!blocked) return href;
             }
           }
           return null;
-        }, URL_BLACKLIST);
+        })()`) as string | null;
 
         if (videoUrl) {
           console.log("[jimeng] Found video URL in DOM");

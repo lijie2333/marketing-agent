@@ -6,6 +6,8 @@ import { JimengAutomation, ContentReviewError } from "./jimeng";
 import { chromium } from "playwright";
 import path from "path";
 import fs from "fs";
+import { Readable } from "stream";
+import { pipeline } from "stream/promises";
 import { URL } from "url";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
@@ -15,6 +17,15 @@ const jimeng = new JimengAutomation();
 const WORKER_ID = `worker-${process.pid}`;
 const CONCURRENCY = parseInt(process.env.CONCURRENCY || "3");
 const VIDEOS_DIR = path.resolve(__dirname, "../uploads/videos");
+
+// Base directory for all user uploads (logos, brand materials, etc.)
+const UPLOADS_BASE = path.resolve(__dirname, "../uploads");
+
+/** Convert a public URL like /uploads/userId/logos/file.png to an absolute local path */
+function resolveUploadPath(publicUrl: string): string {
+  const relative = publicUrl.replace(/^\/uploads\//, "");
+  return path.join(UPLOADS_BASE, relative);
+}
 
 // Ensure videos directory exists
 fs.mkdirSync(VIDEOS_DIR, { recursive: true });
@@ -27,11 +38,15 @@ async function downloadVideo(remoteUrl: string, jobId: string): Promise<string> 
 
   const res = await fetch(remoteUrl);
   if (!res.ok) throw new Error(`Download failed: HTTP ${res.status}`);
+  if (!res.body) throw new Error("Download failed: empty response body");
 
-  const buffer = Buffer.from(await res.arrayBuffer());
-  fs.writeFileSync(filepath, buffer);
+  await pipeline(
+    Readable.fromWeb(res.body as unknown as Parameters<typeof Readable.fromWeb>[0]),
+    fs.createWriteStream(filepath)
+  );
 
-  const sizeMB = (buffer.length / 1024 / 1024).toFixed(1);
+  const stat = fs.statSync(filepath);
+  const sizeMB = (stat.size / 1024 / 1024).toFixed(1);
   console.log(`[download] Saved ${filename} (${sizeMB} MB)`);
   return filename;
 }
@@ -68,10 +83,12 @@ async function firstLogin() {
   try {
     const page = await browser.newPage();
     await page.goto("https://jimeng.jianying.com");
-    // Keep open until Ctrl+C
-    await new Promise<void>(() => {});
+    await new Promise<void>((resolve) => {
+      const stop = () => resolve();
+      process.once("SIGINT", stop);
+      process.once("SIGTERM", stop);
+    });
   } finally {
-    // SIGINT will kill process before finally runs, but defensive cleanup
     await browser.close().catch(() => {});
   }
 }
@@ -92,11 +109,12 @@ async function main() {
   const worker = new Worker(
     "video-generation",
     async (job: Job) => {
-      const { jobId, content, duration, ratio } = job.data as {
+      const { jobId, content, duration, ratio, referenceImageUrls } = job.data as {
         jobId: string;
         content: string;
         duration: number;
         ratio: string;
+        referenceImageUrls?: string[];
       };
 
       await db.videoJob.update({
@@ -105,7 +123,15 @@ async function main() {
       });
 
       try {
-        const remoteUrl = await jimeng.generateVideo({ content, duration, ratio });
+        const referenceImagePaths = (referenceImageUrls ?? [])
+          .map(resolveUploadPath)
+          .filter((p) => fs.existsSync(p));
+
+        if ((referenceImageUrls ?? []).length > 0 && referenceImagePaths.length === 0) {
+          console.warn(`[${WORKER_ID}] Job ${jobId}: referenceImageUrls specified but no files found locally`);
+        }
+
+        const remoteUrl = await jimeng.generateVideo({ content, duration, ratio, referenceImagePaths });
 
         // Download video to local disk
         const filename = await downloadVideo(remoteUrl, jobId);
