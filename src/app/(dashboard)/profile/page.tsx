@@ -17,6 +17,7 @@ interface BrandProfile {
   videoTone: string;
   complianceNotes: string[];
   createdAt: string;
+  logoUrl?: string | null;
 }
 
 export default function ProfilePage() {
@@ -95,6 +96,13 @@ export default function ProfilePage() {
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
+                    {profile.logoUrl && (
+                      <img
+                        src={profile.logoUrl}
+                        alt="logo"
+                        className="h-8 w-8 object-contain rounded border bg-white shrink-0"
+                      />
+                    )}
                     <CardTitle className="text-lg">
                       {profile.brandName || profile.brandPersonality}
                     </CardTitle>

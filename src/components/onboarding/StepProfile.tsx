@@ -19,6 +19,7 @@ interface BrandProfile {
   recommendedStyles: string[];
   videoTone: string;
   complianceNotes: string[];
+  logoUrl?: string | null;
 }
 
 export default function StepProfile({ profileId }: { profileId: string }) {
@@ -52,6 +53,19 @@ export default function StepProfile({ profileId }: { profileId: string }) {
         <CardTitle>品牌画像（可编辑后确认）</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {profile.logoUrl && (
+          <div className="flex items-center gap-3 p-3 bg-muted/40 rounded-lg">
+            <img
+              src={profile.logoUrl}
+              alt="品牌Logo"
+              className="h-12 w-12 object-contain rounded border bg-white"
+            />
+            <div>
+              <p className="text-xs font-medium">品牌 Logo 已上传</p>
+              <p className="text-xs text-muted-foreground">视频结尾将自动生成落版收尾</p>
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label>品牌名称</Label>
