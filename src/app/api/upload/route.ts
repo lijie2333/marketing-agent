@@ -14,6 +14,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const { searchParams } = new URL(req.url);
+  const uploadType = searchParams.get("type");
+
   const formData = await req.formData();
   const file = formData.get("file") as File;
 
@@ -28,13 +31,22 @@ export async function POST(req: NextRequest) {
   }
 
   const merchantDir = path.join(UPLOAD_DIR, session.user.id);
-  await mkdir(merchantDir, { recursive: true });
+
+  // If type=logo, use logos subdirectory
+  const uploadDir = uploadType === "logo"
+    ? path.join(merchantDir, "logos")
+    : merchantDir;
+
+  await mkdir(uploadDir, { recursive: true });
 
   const filename = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-  const filepath = path.join(merchantDir, filename);
+  const filepath = path.join(uploadDir, filename);
   const buffer = Buffer.from(await file.arrayBuffer());
   await writeFile(filepath, buffer);
 
-  const url = `${PUBLIC_URL_PREFIX}/${session.user.id}/${filename}`;
+  const url = uploadType === "logo"
+    ? `${PUBLIC_URL_PREFIX}/${session.user.id}/logos/${filename}`
+    : `${PUBLIC_URL_PREFIX}/${session.user.id}/${filename}`;
+
   return NextResponse.json({ url });
 }
