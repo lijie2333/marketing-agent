@@ -10,8 +10,9 @@ export const jobDispatcherSkill: SkillDefinition = {
     type: SchemaType.OBJECT,
     properties: {
       strategyId: { type: SchemaType.STRING, description: "Strategy ID to dispatch all confirmed prompts for" },
+      merchantId: { type: SchemaType.STRING, description: "Merchant ID used to scope prompt ownership" },
     },
-    required: ["strategyId"],
+    required: ["strategyId", "merchantId"],
   },
   handler: async (params) => {
     const prompts = await db.prompt.findMany({
@@ -20,6 +21,7 @@ export const jobDispatcherSkill: SkillDefinition = {
         isConfirmed: true,
         complianceStatus: "APPROVED",
         videoJob: null,
+        strategy: { brandProfile: { merchantId: params.merchantId as string } },
       },
     });
 
@@ -28,14 +30,23 @@ export const jobDispatcherSkill: SkillDefinition = {
         const job = await db.videoJob.create({
           data: { promptId: p.id, status: "QUEUED" },
         });
-        await videoQueue.add("generate-video", {
-          jobId: job.id,
-          promptId: p.id,
-          content: p.content,
-          duration: p.duration,
-          ratio: p.ratio,
-        });
-        return job.id;
+
+        try {
+          await videoQueue.add("generate-video", {
+            jobId: job.id,
+            promptId: p.id,
+            content: p.content,
+            duration: p.duration,
+            ratio: p.ratio,
+            referenceImageUrls: p.referenceImageUrls,
+          });
+          return job.id;
+        } catch (error) {
+          await db.videoJob.deleteMany({
+            where: { id: job.id, status: "QUEUED" },
+          });
+          throw error;
+        }
       })
     );
 

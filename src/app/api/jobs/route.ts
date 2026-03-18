@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { videoQueue } from "@/lib/queue";
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -46,8 +46,18 @@ export async function POST(req: NextRequest) {
   });
   if (!job) return NextResponse.json({ error: "Job not found or not retryable" }, { status: 404 });
 
-  await db.videoJob.update({ where: { id: jobId }, data: { status: "QUEUED", retryCount: 0, errorMessage: null } });
-  await videoQueue.add("generate-video", { jobId, promptId: job.promptId, content: job.prompt.content, duration: job.prompt.duration, ratio: job.prompt.ratio });
+  await videoQueue.add("generate-video", {
+    jobId,
+    promptId: job.promptId,
+    content: job.prompt.content,
+    duration: job.prompt.duration,
+    ratio: job.prompt.ratio,
+    referenceImageUrls: job.prompt.referenceImageUrls,
+  });
+  await db.videoJob.update({
+    where: { id: jobId },
+    data: { status: "QUEUED", retryCount: 0, errorMessage: null },
+  });
 
   return NextResponse.json({ ok: true });
 }

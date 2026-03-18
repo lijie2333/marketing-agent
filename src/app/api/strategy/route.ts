@@ -35,6 +35,8 @@ export async function POST(req: NextRequest) {
   });
   if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
 
+  const logoUrl = (profile as Record<string, unknown>).logoUrl as string | undefined ?? undefined;
+
   const totalVideos = requestedTotal ??
     (counts ? Object.values(counts).reduce((a, b) => a + b, 0) : 50);
 
@@ -67,7 +69,8 @@ export async function POST(req: NextRequest) {
         style: dir.style,
         count: String(Math.min(count, 50)),
         keywordPool: JSON.stringify(strategyResult.keywordPool),
-      }) as Array<{ content: string; script: string; duration: number; ratio: string; style: string; direction: string }>;
+        logoUrl,
+      }) as Array<{ content: string; script: string; duration: number; ratio: string; style: string; direction: string; referenceImageUrls: string[] }>;
 
       console.log(`[strategy]   ✓ ${dir.direction}: generated ${rawPrompts.length} prompts`);
 
@@ -87,6 +90,7 @@ export async function POST(req: NextRequest) {
         style: String(p.style || dir.style),
         direction: String(p.direction || dir.direction),
         complianceStatus: p.complianceStatus === "APPROVED" ? "APPROVED" as const : "NEEDS_REVIEW" as const,
+        referenceImageUrls: rawPrompts[i]?.referenceImageUrls ?? [],
       }));
     });
 
@@ -106,6 +110,7 @@ export async function POST(req: NextRequest) {
         style: p.style,
         direction: p.direction,
         complianceStatus: p.complianceStatus,
+        referenceImageUrls: p.referenceImageUrls,
       })),
     });
 
