@@ -10,6 +10,9 @@ import { Badge } from "@/components/ui/badge";
 
 interface BrandProfile {
   id: string;
+  brandName: string;
+  industry: string;
+  productDescription: string;
   brandPersonality: string;
   coreSellingPoints: string[];
   targetAudience: string;
@@ -38,7 +41,7 @@ export default function StepProfile({ profileId }: { profileId: string }) {
       body: JSON.stringify(profile),
     });
     setSaving(false);
-    router.push("/strategy");
+    router.push("/profile");
   }
 
   if (!profile) return <p className="text-center py-10">加载中...</p>;
@@ -49,26 +52,52 @@ export default function StepProfile({ profileId }: { profileId: string }) {
         <CardTitle>品牌画像（可编辑后确认）</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <Label>品牌名称</Label>
+            <Input
+              value={profile.brandName}
+              onChange={(e) => setProfile((p) => p && { ...p, brandName: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label>所属行业</Label>
+            <Input
+              value={profile.industry}
+              onChange={(e) => setProfile((p) => p && { ...p, industry: e.target.value })}
+            />
+          </div>
+        </div>
         <div>
-          <Label>品牌人格</Label>
-          <Input
-            value={profile.brandPersonality}
-            onChange={(e) => setProfile((p) => p && { ...p, brandPersonality: e.target.value })}
+          <Label>产品/服务描述</Label>
+          <Textarea
+            value={profile.productDescription}
+            onChange={(e) => setProfile((p) => p && { ...p, productDescription: e.target.value })}
+            rows={2}
           />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <Label>品牌人格</Label>
+            <Input
+              value={profile.brandPersonality}
+              onChange={(e) => setProfile((p) => p && { ...p, brandPersonality: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label>视频基调</Label>
+            <Input
+              value={profile.videoTone}
+              onChange={(e) => setProfile((p) => p && { ...p, videoTone: e.target.value })}
+            />
+          </div>
         </div>
         <div>
           <Label>目标受众</Label>
           <Textarea
             value={profile.targetAudience}
             onChange={(e) => setProfile((p) => p && { ...p, targetAudience: e.target.value })}
-            rows={3}
-          />
-        </div>
-        <div>
-          <Label>视频基调</Label>
-          <Input
-            value={profile.videoTone}
-            onChange={(e) => setProfile((p) => p && { ...p, videoTone: e.target.value })}
+            rows={2}
           />
         </div>
         <div>
@@ -96,7 +125,7 @@ export default function StepProfile({ profileId }: { profileId: string }) {
           </div>
         )}
         <Button onClick={handleConfirm} className="w-full" disabled={saving}>
-          {saving ? "保存中..." : "确认品牌画像，进入策略生成"}
+          {saving ? "保存中..." : "确认品牌画像"}
         </Button>
       </CardContent>
     </Card>

@@ -1,4 +1,13 @@
 {
+  "permissions": {
+    "allow": [
+      "Read(//Users/lijie/lijie agent project/marketing agent/**)",
+      "Bash(kill 60320 60319 60301)",
+      "Bash(pkill -f \"jimeng-session\")",
+      "Bash(pkill -f \"worker/index\")",
+      "Bash(HEADLESS=false npx tsx worker/test-config.ts)"
+    ]
+  },
   "enabledPlugins": {
     "claude-session-driver@superpowers-marketplace": true,
     "superpowers@superpowers-marketplace": true

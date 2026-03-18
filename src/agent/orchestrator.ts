@@ -11,7 +11,7 @@ export interface AgentContext {
 
 export async function runAgent(context: AgentContext): Promise<string> {
   const model = gemini.getGenerativeModel({
-    model: "gemini-1.5-pro",
+    model: "gemini-2.5-flash",
     tools: skillRegistry.toGeminiTools(),
   });
 

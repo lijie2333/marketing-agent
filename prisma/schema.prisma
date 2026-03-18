@@ -28,6 +28,9 @@ model BrandProfile {
   id                   String          @id @default(cuid())
   merchantId           String
   merchant             Merchant        @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  brandName            String          @default("")
+  industry             String          @default("")
+  productDescription   String          @default("")
   brandPersonality     String
   coreSellingPoints    String[]
   targetAudience       String
@@ -35,6 +38,7 @@ model BrandProfile {
   videoTone            String
   complianceNotes      String[]
   uploadedFileUrls     String[]
+  logoUrl              String?
   questionnaireAnswers Json
   regenerationCount    Int             @default(0)
   strategies           VideoStrategy[]
@@ -57,13 +61,15 @@ model Prompt {
   strategyId       String
   strategy         VideoStrategy    @relation(fields: [strategyId], references: [id], onDelete: Cascade)
   content          String
+  script           String           @default("")
   duration         Int
   ratio            String
   style            String
   direction        String
   complianceStatus ComplianceStatus @default(PENDING)
-  isConfirmed      Boolean          @default(false)
-  videoJob         VideoJob?
+  isConfirmed          Boolean          @default(false)
+  referenceImageUrls   String[]         @default([])
+  videoJob             VideoJob?
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 }

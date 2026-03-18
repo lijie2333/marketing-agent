@@ -3,20 +3,27 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { brandAnalyzerSkill } from "@/skills/brand-analyzer";
 
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { basicInfo, uploadedFileUrls, questionnaireAnswers } = await req.json();
+  const { description, uploadedFileUrls } = await req.json() as {
+    description: string;
+    uploadedFileUrls?: string[];
+  };
 
   try {
     const profileData = await brandAnalyzerSkill.handler({
-      basicInfo: JSON.stringify(basicInfo),
+      description,
       fileUrls: JSON.stringify(uploadedFileUrls || []),
-      questionnaireAnswers: JSON.stringify(questionnaireAnswers),
     }) as {
+      brandName: string;
+      industry: string;
+      productDescription: string;
       brandPersonality: string;
       coreSellingPoints: string[];
       targetAudience: string;
@@ -28,14 +35,23 @@ export async function POST(req: NextRequest) {
     const profile = await db.brandProfile.create({
       data: {
         merchantId: session.user.id,
-        ...profileData,
+        brandName: profileData.brandName || "",
+        industry: profileData.industry || "",
+        productDescription: profileData.productDescription || "",
+        brandPersonality: profileData.brandPersonality || "",
+        coreSellingPoints: profileData.coreSellingPoints || [],
+        targetAudience: profileData.targetAudience || "",
+        recommendedStyles: profileData.recommendedStyles || [],
+        videoTone: profileData.videoTone || "",
+        complianceNotes: profileData.complianceNotes || [],
         uploadedFileUrls: uploadedFileUrls || [],
-        questionnaireAnswers,
+        questionnaireAnswers: { description },
       },
     });
 
     return NextResponse.json({ profileId: profile.id, profile });
   } catch (err) {
+    console.error("[agent/run] Error:", err);
     return NextResponse.json({ error: (err as Error).message }, { status: 500 });
   }
 }

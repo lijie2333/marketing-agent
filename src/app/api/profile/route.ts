@@ -6,9 +6,9 @@ export async function GET() {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const profile = await db.brandProfile.findFirst({
+  const profiles = await db.brandProfile.findMany({
     where: { merchantId: session.user.id },
     orderBy: { createdAt: "desc" },
   });
-  return NextResponse.json(profile);
+  return NextResponse.json(profiles);
 }

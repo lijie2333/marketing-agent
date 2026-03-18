@@ -1,45 +1,140 @@
 "use client";
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 
-export default function StrategyPage() {
+interface Profile {
+  id: string;
+  brandName: string;
+  industry: string;
+  brandPersonality: string;
+  coreSellingPoints: string[];
+  recommendedStyles: string[];
+  createdAt: string;
+}
+
+function StrategyContent() {
   const router = useRouter();
-  const [profile, setProfile] = useState<{ id: string; brandPersonality: string } | null>(null);
-  const [count, setCount] = useState(50);
+  const searchParams = useSearchParams();
+  const preselectedId = searchParams.get("profileId");
+
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(preselectedId);
+  const [count, setCount] = useState(10);
   const [loading, setLoading] = useState(false);
+  const [loadingProfiles, setLoadingProfiles] = useState(true);
 
   useEffect(() => {
-    fetch("/api/profile").then((r) => r.json()).then(setProfile);
-  }, []);
+    fetch("/api/profile")
+      .then((r) => r.json())
+      .then((data: Profile[]) => {
+        setProfiles(data);
+        if (!selectedId && data.length > 0) {
+          setSelectedId(data[0].id);
+        }
+        setLoadingProfiles(false);
+      });
+  }, [selectedId]);
+
+  const selectedProfile = profiles.find((p) => p.id === selectedId);
+
+  const [error, setError] = useState<string | null>(null);
 
   async function generate() {
-    if (!profile) return;
+    if (!selectedId) return;
     setLoading(true);
-    const res = await fetch("/api/strategy", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ profileId: profile.id, totalVideos: count }),
-    });
-    const { strategyId } = await res.json();
-    setLoading(false);
-    router.push(`/prompts?strategyId=${strategyId}`);
+    setError(null);
+    try {
+      const res = await fetch("/api/strategy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId: selectedId, totalVideos: count }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `请求失败 (${res.status})`);
+      }
+      const { strategyId } = await res.json() as { strategyId: string };
+      router.push(`/prompts?strategyId=${strategyId}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "生成失败，请重试");
+      setLoading(false);
+    }
+  }
+
+  if (loadingProfiles) {
+    return (
+      <div className="max-w-2xl mx-auto py-10 px-4">
+        <p className="text-muted-foreground">加载品牌画像中...</p>
+      </div>
+    );
+  }
+
+  if (profiles.length === 0) {
+    return (
+      <div className="max-w-2xl mx-auto py-10 px-4">
+        <Card>
+          <CardContent className="py-12 text-center">
+            <p className="text-muted-foreground mb-4">还没有品牌画像，请先创建</p>
+            <Button onClick={() => router.push("/onboarding")}>去创建品牌画像</Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   return (
-    <div className="max-w-2xl mx-auto py-10 px-4">
+    <div className="max-w-2xl mx-auto py-10 px-4 space-y-4">
+      {/* 选择品牌画像 */}
+      <Card>
+        <CardHeader>
+          <CardTitle>选择品牌画像</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {profiles.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setSelectedId(p.id)}
+              className={`w-full text-left p-3 rounded-lg border-2 transition-colors ${
+                selectedId === p.id
+                  ? "border-primary bg-primary/5"
+                  : "border-border hover:border-muted-foreground"
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-sm">{p.brandName || p.brandPersonality}</span>
+                <span className="text-xs text-muted-foreground">
+                  {new Date(p.createdAt).toLocaleDateString("zh-CN")}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {p.recommendedStyles.map((s, i) => (
+                  <Badge key={i} variant="outline" className="text-xs">{s}</Badge>
+                ))}
+              </div>
+            </button>
+          ))}
+        </CardContent>
+      </Card>
+
+      {/* 生成配置 */}
       <Card>
         <CardHeader><CardTitle>视频策略生成</CardTitle></CardHeader>
         <CardContent className="space-y-4">
-          {profile ? (
-            <p className="text-sm text-muted-foreground">
-              品牌：<strong>{profile.brandPersonality}</strong>
-            </p>
-          ) : (
-            <p className="text-sm text-muted-foreground">加载品牌画像中...</p>
+          {selectedProfile && (
+            <div className="text-sm">
+              <span className="text-muted-foreground">当前画像：</span>
+              <strong>{selectedProfile.brandName || selectedProfile.brandPersonality}</strong>
+              <span className="text-muted-foreground ml-2">
+                {selectedProfile.industry && `· ${selectedProfile.industry} `}
+                · 卖点：{selectedProfile.coreSellingPoints.slice(0, 3).join("、")}
+              </span>
+            </div>
           )}
           <div>
             <Label>计划生成视频总数</Label>
@@ -50,12 +145,28 @@ export default function StrategyPage() {
               min={1}
               max={200}
             />
+            <p className="text-xs text-muted-foreground mt-1">
+              AI 会自动分配到不同方向，每条提示词对应 15 秒竖屏视频
+            </p>
           </div>
-          <Button onClick={generate} disabled={!profile || loading} className="w-full">
-            {loading ? "AI 生成策略和提示词中..." : "生成提示词"}
+          {error && (
+            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-sm text-destructive">
+              {error}
+            </div>
+          )}
+          <Button onClick={generate} disabled={!selectedId || loading} className="w-full">
+            {loading ? "AI 生成策略、提示词和文案中（约30-60秒）..." : "生成提示词和配音文案"}
           </Button>
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function StrategyPage() {
+  return (
+    <Suspense fallback={<div className="max-w-2xl mx-auto py-10 px-4"><p className="text-muted-foreground">加载中...</p></div>}>
+      <StrategyContent />
+    </Suspense>
   );
 }
