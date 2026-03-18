@@ -66,6 +66,21 @@ ${VOCAB}
 ## 合规规范
 
 ${COMPLIANCE}
+
+---
+
+## 品牌落版规则（当提供了品牌Logo时，每条提示词必须遵守）
+
+每条提示词的最后 2 秒（13-15秒）必须包含落版描述，自然融入叙事流结尾，不要生硬割裂。
+
+落版模板（根据品牌色调和视频风格灵活调整措辞）：
+「13-15秒，节奏渐缓，画面轻柔收尾，品牌标识@图片1从画面中央渐入放大，配合[品牌主色]光晕粒子散射，旁白（声音类型）低语："[品牌名/金句]"，落版。」
+
+要求：
+- @图片1 是品牌 Logo 参考图，必须出现在落版描述中，不要在提示词其他位置引用
+- 落版描述控制在 30-50 字以内，简洁、不破坏前段叙事节奏
+- 光晕颜色贴合品牌色调（无品牌色则用白色或金色）
+- 旁白融入前段的 Audio 段落，不要单独列出
 `;
 
 export const seedancePrompterSkill: SkillDefinition = {
@@ -95,6 +110,10 @@ export const seedancePrompterSkill: SkillDefinition = {
         type: SchemaType.STRING,
         description: "JSON string of keyword pool from strategy",
       },
+      logoUrl: {
+        type: SchemaType.STRING,
+        description: "Optional brand logo public URL. When provided, every prompt must end with a closing slate using @图片1.",
+      },
     },
     required: ["brandProfile", "direction", "style", "count"],
   },
@@ -103,6 +122,12 @@ export const seedancePrompterSkill: SkillDefinition = {
     const profile = JSON.parse(params.brandProfile as string);
     const keywords = params.keywordPool ? JSON.parse(params.keywordPool as string) : {};
     const count = parseInt(params.count as string);
+    const logoUrl = params.logoUrl as string | undefined;
+    const hasLogo = !!logoUrl;
+
+    const logoInstruction = hasLogo
+      ? `\n- 【必须】每条提示词结尾 13-15 秒加入落版收尾，品牌标识@图片1从画面中央渐入，参见系统提示中的「品牌落版规则」`
+      : "";
 
     const userPrompt = `请根据以下品牌信息，为「${params.direction}」方向生成 ${count} 条即梦AI视频提示词。
 
@@ -116,7 +141,7 @@ ${JSON.stringify(profile, null, 2)}
 - 比例：9:16 竖屏
 - 品牌人格：${profile.brandPersonality || "自然真实"}
 - 视频基调：${profile.videoTone || "自然真实"}
-- 关键词参考：${JSON.stringify(keywords)}
+- 关键词参考：${JSON.stringify(keywords)}${logoInstruction}
 
 ## 重要：配音旁白必须嵌入提示词
 
@@ -170,6 +195,7 @@ ${JSON.stringify(profile, null, 2)}
       ratio: "9:16",
       style: params.style as string,
       direction: params.direction as string,
+      referenceImageUrls: hasLogo && logoUrl ? [logoUrl] : [],
     }));
   },
 };
