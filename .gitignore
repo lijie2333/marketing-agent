@@ -53,3 +53,4 @@ uploads/*
 worker/node_modules
 worker/.jimeng-session
 worker/dist
+.jimeng-session/
