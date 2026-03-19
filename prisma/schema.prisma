@@ -14,6 +14,7 @@ model Merchant {
   brandProfiles BrandProfile[]
   sessions      Session[]
   createdAt     DateTime       @default(now())
+  lastLoginAt   DateTime?
 }
 
 model Session {

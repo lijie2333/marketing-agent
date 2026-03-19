@@ -41,11 +41,6 @@ export async function GET() {
     db.merchant.findMany({
       orderBy: { createdAt: "desc" },
       include: {
-        _count: {
-          select: {
-            brandProfiles: true,
-          },
-        },
         brandProfiles: {
           include: {
             _count: { select: { strategies: true } },
@@ -64,7 +59,7 @@ export async function GET() {
     }),
   ]);
 
-  const usersWithStats = users.map((u) => {
+  const usersWithStats = users.map((u: typeof users[number]) => {
     const allPrompts = u.brandProfiles.flatMap((bp) =>
       bp.strategies.flatMap((s) => s.prompts)
     );
@@ -74,7 +69,8 @@ export async function GET() {
       name: u.name,
       email: u.email,
       createdAt: u.createdAt,
-      profiles: u._count.brandProfiles,
+      lastLoginAt: u.lastLoginAt,
+      profiles: u.brandProfiles.length,
       strategies: u.brandProfiles.reduce((acc, bp) => acc + bp.strategies.length, 0),
       prompts: allPrompts.length,
       videos: allJobs.length,

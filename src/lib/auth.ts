@@ -21,6 +21,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           merchant.passwordHash
         );
         if (!valid) return null;
+        await db.merchant.update({
+          where: { id: merchant.id },
+          data: { lastLoginAt: new Date() },
+        });
         return { id: merchant.id, email: merchant.email, name: merchant.name };
       },
     }),
