@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import type { PdfBrandDigest } from "@/types/pdf-digest";
 
 interface BrandProfile {
   id: string;
@@ -19,6 +20,7 @@ interface BrandProfile {
   recommendedStyles: string[];
   videoTone: string;
   complianceNotes: string[];
+  pdfDigest?: PdfBrandDigest | null;
   logoUrl?: string | null;
 }
 
@@ -51,6 +53,9 @@ export default function StepProfile({ profileId }: { profileId: string }) {
     <Card>
       <CardHeader>
         <CardTitle>品牌画像（可编辑后确认）</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          当前页面展示的是便于确认的摘要版，系统已在后台同步生成详细结构化品牌画像与 Markdown 文档，后续策略和提示词会优先基于那份完整画像生成。
+        </p>
       </CardHeader>
       <CardContent className="space-y-4">
         {profile.logoUrl && (
@@ -63,6 +68,50 @@ export default function StepProfile({ profileId }: { profileId: string }) {
             <div>
               <p className="text-xs font-medium">品牌 Logo 已上传</p>
               <p className="text-xs text-muted-foreground">视频结尾将自动生成落版收尾</p>
+            </div>
+          </div>
+        )}
+        {profile.pdfDigest && (
+          <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
+            <div>
+              <p className="text-sm font-medium">PDF 提炼出的品牌要点</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                这一部分由 PDF 专职解析智能体生成，用于辅助后续策略和提示词生产
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>公司主体</Label>
+                <p className="text-sm mt-1">{profile.pdfDigest.brandFacts.companyName || "未提取到"}</p>
+              </div>
+              <div>
+                <Label>商业模式</Label>
+                <p className="text-sm mt-1">{profile.pdfDigest.brandFacts.businessModel || "未提取到"}</p>
+              </div>
+            </div>
+            <div>
+              <Label>PDF 证明点</Label>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {profile.pdfDigest.brandFacts.proofPoints.map((point, i) => (
+                  <Badge key={i} variant="secondary">{point}</Badge>
+                ))}
+              </div>
+            </div>
+            <div>
+              <Label>适合短视频的切入角度</Label>
+              <ul className="text-sm text-muted-foreground mt-2 list-disc pl-4 space-y-1">
+                {profile.pdfDigest.videoMarketingDigest.hookAngles.map((item, i) => (
+                  <li key={i}>{item}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <Label>必须提到</Label>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {profile.pdfDigest.videoMarketingDigest.mustMention.map((item, i) => (
+                  <Badge key={i} variant="outline">{item}</Badge>
+                ))}
+              </div>
             </div>
           </div>
         )}

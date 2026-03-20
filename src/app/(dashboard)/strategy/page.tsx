@@ -27,6 +27,7 @@ function StrategyContent() {
   const [count, setCount] = useState(10);
   const [loading, setLoading] = useState(false);
   const [loadingProfiles, setLoadingProfiles] = useState(true);
+  const [warning, setWarning] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/profile")
@@ -48,6 +49,7 @@ function StrategyContent() {
     if (!selectedId) return;
     setLoading(true);
     setError(null);
+    setWarning(null);
     try {
       const res = await fetch("/api/strategy", {
         method: "POST",
@@ -58,7 +60,18 @@ function StrategyContent() {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `请求失败 (${res.status})`);
       }
-      const { strategyId } = await res.json() as { strategyId: string };
+      const { strategyId, failedDirections, generatedPromptCount } = await res.json() as {
+        strategyId: string;
+        failedDirections?: Array<{ direction: string; error: string }>;
+        generatedPromptCount?: number;
+      };
+      if (failedDirections && failedDirections.length > 0) {
+        setWarning(
+          `已生成 ${generatedPromptCount ?? 0} 条提示词，但有部分方向失败：${failedDirections
+            .map((item) => item.direction)
+            .join("、")}`
+        );
+      }
       router.push(`/prompts?strategyId=${strategyId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "生成失败，请重试");
@@ -146,12 +159,17 @@ function StrategyContent() {
               max={200}
             />
             <p className="text-xs text-muted-foreground mt-1">
-              AI 会自动分配到不同方向，每条提示词对应 15 秒竖屏视频
+              AI 会优先读取后台沉淀的完整品牌画像 Markdown，并自动分配到不同方向；每条提示词对应 15 秒竖屏视频
             </p>
           </div>
           {error && (
             <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-sm text-destructive">
               {error}
+            </div>
+          )}
+          {warning && (
+            <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg text-sm text-amber-700">
+              {warning}
             </div>
           )}
           <Button onClick={generate} disabled={!selectedId || loading} className="w-full">

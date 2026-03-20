@@ -38,6 +38,10 @@ model BrandProfile {
   recommendedStyles    String[]
   videoTone            String
   complianceNotes      String[]
+  detailedProfile      Json?
+  pdfDigest            Json?
+  brandProfileMarkdown String          @default("")
+  strategySystemPrompt String          @default("")
   uploadedFileUrls     String[]
   logoUrl              String?
   questionnaireAnswers Json
@@ -53,16 +57,39 @@ model VideoStrategy {
   brandProfile   BrandProfile  @relation(fields: [brandProfileId], references: [id], onDelete: Cascade)
   contentMatrix  Json
   keywordPool    Json
+  batches        ProductionBatch[]
   prompts        Prompt[]
   createdAt      DateTime      @default(now())
+}
+
+model ProductionBatch {
+  id                     String        @id @default(cuid())
+  strategyId             String
+  strategy               VideoStrategy @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+  status                 BatchStatus   @default(SAMPLE_QUEUED)
+  sampleSizePerDirection Int           @default(2)
+  totalPrompts           Int           @default(0)
+  samplePrompts          Int           @default(0)
+  bulkPrompts            Int           @default(0)
+  prompts                Prompt[]
+  sampleDispatchedAt     DateTime?
+  sampleCompletedAt      DateTime?
+  bulkDispatchedAt       DateTime?
+  completedAt            DateTime?
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
 }
 
 model Prompt {
   id               String           @id @default(cuid())
   strategyId       String
   strategy         VideoStrategy    @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+  productionBatchId String?
+  productionBatch   ProductionBatch? @relation(fields: [productionBatchId], references: [id], onDelete: SetNull)
+  productionPhase   PromptPhase?
   content          String
   script           String           @default("")
+  storyboard       Json?
   duration         Int
   ratio            String
   style            String
@@ -104,4 +131,19 @@ enum JobStatus {
   COMPLETED
   FAILED
   NEEDS_REVIEW
+}
+
+enum BatchStatus {
+  SAMPLE_QUEUED
+  SAMPLE_RUNNING
+  SAMPLE_REVIEW
+  BULK_QUEUED
+  BULK_RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum PromptPhase {
+  SAMPLE
+  BULK
 }

@@ -1,5 +1,5 @@
 import { SchemaType } from "@google/generative-ai";
-import { SkillDefinition } from "./registry";
+import type { SkillDefinition } from "./registry";
 
 const VIOLATION_PATTERNS = [
   /[a-zA-Z\u4e00-\u9fa5]+(?:先生|女士|总统|主席)/,

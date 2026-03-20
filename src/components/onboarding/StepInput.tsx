@@ -4,9 +4,29 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { cn } from "@/lib/utils";
+import { uploadFileWithProgress } from "@/lib/upload-client";
 
 type Mode = "description" | "upload";
+type UploadStatus = "uploading" | "success" | "error";
+
+interface UploadItem {
+  id: string;
+  kind: "image" | "pdf";
+  name: string;
+  progress: number;
+  status: UploadStatus;
+  url?: string;
+  error?: string;
+}
+
+interface LogoUploadState {
+  error?: string;
+  name: string;
+  progress: number;
+  status: UploadStatus;
+}
 
 interface StepInputProps {
   onNext: (data: { description: string; uploadedFileUrls: string[]; logoUrl?: string }) => Promise<void>;
@@ -15,54 +35,125 @@ interface StepInputProps {
 export default function StepInput({ onNext }: StepInputProps) {
   const [mode, setMode] = useState<Mode>("description");
   const [description, setDescription] = useState("");
-  const [urls, setUrls] = useState<string[]>([]);
-  const [uploading, setUploading] = useState(false);
+  const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
-  const [logoUploading, setLogoUploading] = useState(false);
+  const [logoUpload, setLogoUpload] = useState<LogoUploadState | null>(null);
+
+  const uploadedUrls = uploadItems.flatMap((item) =>
+    item.status === "success" && item.url ? [item.url] : []
+  );
+  const uploading = uploadItems.some((item) => item.status === "uploading");
+  const logoUploading = logoUpload?.status === "uploading";
+
+  function createUploadId(file: File) {
+    return `${file.name}-${file.lastModified}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  function updateUploadItem(id: string, patch: Partial<UploadItem>) {
+    setUploadItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, ...patch } : item))
+    );
+  }
+
+  function getStatusLabel(status: UploadStatus) {
+    if (status === "success") return "上传完成";
+    if (status === "error") return "上传失败";
+    return "上传中";
+  }
 
   async function handleFiles(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
-    setUploading(true);
-    const newUrls: string[] = [];
-    for (const file of files) {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch("/api/upload", { method: "POST", body: fd });
-      if (res.ok) {
-        const { url } = await res.json() as { url: string };
-        newUrls.push(url);
+
+    const nextItems: UploadItem[] = files.map((file) => ({
+      id: createUploadId(file),
+      kind: file.type === "application/pdf" ? "pdf" : "image",
+      name: file.name,
+      progress: 0,
+      status: "uploading" as const,
+    }));
+
+    setUploadItems((prev) => [...prev, ...nextItems]);
+
+    for (let index = 0; index < files.length; index += 1) {
+      const file = files[index];
+      const item = nextItems[index];
+
+      try {
+        const { url } = await uploadFileWithProgress({
+          file,
+          onProgress: (progress) => updateUploadItem(item.id, { progress }),
+        });
+
+        updateUploadItem(item.id, {
+          progress: 100,
+          status: "success",
+          url,
+        });
+      } catch (error) {
+        updateUploadItem(item.id, {
+          error: error instanceof Error ? error.message : "上传失败，请重试",
+          status: "error",
+        });
       }
     }
-    setUrls((prev) => [...prev, ...newUrls]);
-    setUploading(false);
+
     // reset input so same file can be re-selected
     e.target.value = "";
   }
 
-  function removeFile(index: number) {
-    setUrls((prev) => prev.filter((_, i) => i !== index));
+  function removeFile(id: string) {
+    setUploadItems((prev) => prev.filter((item) => item.id !== id));
   }
 
   async function handleLogoFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    setLogoUploading(true);
-    const fd = new FormData();
-    fd.append("file", file);
-    const res = await fetch("/api/upload?type=logo", { method: "POST", body: fd });
-    if (res.ok) {
-      const { url } = await res.json() as { url: string };
+
+    setLogoUpload({
+      name: file.name,
+      progress: 0,
+      status: "uploading",
+    });
+
+    try {
+      const { url } = await uploadFileWithProgress({
+        endpoint: "/api/upload?type=logo",
+        file,
+        onProgress: (progress) => {
+          setLogoUpload((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  progress,
+                }
+              : prev
+          );
+        },
+      });
+
       setLogoUrl(url);
+      setLogoUpload({
+        name: file.name,
+        progress: 100,
+        status: "success",
+      });
+    } catch (error) {
+      setLogoUpload({
+        error: error instanceof Error ? error.message : "上传失败，请重试",
+        name: file.name,
+        progress: 0,
+        status: "error",
+      });
     }
-    setLogoUploading(false);
+
     e.target.value = "";
   }
 
   const canSubmit =
     (mode === "description" && description.trim().length > 10) ||
-    (mode === "upload" && urls.length > 0);
+    (mode === "upload" && uploadedUrls.length > 0);
 
   async function handleSubmit() {
     if (!canSubmit) return;
@@ -70,7 +161,7 @@ export default function StepInput({ onNext }: StepInputProps) {
     try {
       await onNext({
         description: mode === "description" ? description.trim() : "",
-        uploadedFileUrls: mode === "upload" ? urls : [],
+        uploadedFileUrls: mode === "upload" ? uploadedUrls : [],
         logoUrl: logoUrl ?? undefined,
       });
     } catch {
@@ -154,8 +245,12 @@ export default function StepInput({ onNext }: StepInputProps) {
                 onChange={handleFiles}
                 className="hidden"
                 id="file-upload"
+                disabled={uploading}
               />
-              <label htmlFor="file-upload" className="cursor-pointer">
+              <label
+                htmlFor="file-upload"
+                className={cn("cursor-pointer", uploading && "pointer-events-none opacity-60")}
+              >
                 <div className="text-3xl mb-2">📄</div>
                 <p className="text-sm font-medium">点击选择文件</p>
                 <p className="text-xs text-muted-foreground mt-1">
@@ -165,30 +260,56 @@ export default function StepInput({ onNext }: StepInputProps) {
               </label>
             </div>
 
-            {uploading && (
-              <p className="text-sm text-muted-foreground animate-pulse">上传中...</p>
-            )}
-
-            {urls.length > 0 && (
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">已上传 {urls.length} 个文件（点击 ✕ 删除）：</p>
-                <div className="flex flex-wrap gap-2">
-                  {urls.map((u, i) => (
-                    <Badge
-                      key={i}
-                      variant="secondary"
-                      className="cursor-pointer hover:bg-destructive hover:text-destructive-foreground transition-colors"
-                      onClick={() => removeFile(i)}
-                    >
-                      {u.endsWith(".pdf") ? "📄" : "🖼️"} {u.split("/").pop()} ✕
-                    </Badge>
+            {uploadItems.length > 0 && (
+              <div className="space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  已选择 {uploadItems.length} 个文件，上传成功 {uploadedUrls.length} 个
+                </p>
+                <div className="space-y-2">
+                  {uploadItems.map((item) => (
+                    <div key={item.id} className="rounded-lg border bg-muted/20 p-3">
+                      <Progress value={item.progress} className="gap-2">
+                        <div className="flex items-center justify-between gap-3 w-full">
+                          <div className="min-w-0 text-sm flex items-center gap-2">
+                            <span>{item.kind === "pdf" ? "📄" : "🖼️"}</span>
+                            <span className="truncate">{item.name}</span>
+                          </div>
+                          <span
+                            className={cn(
+                              "shrink-0 text-xs",
+                              item.status === "success" && "text-emerald-600",
+                              item.status === "error" && "text-destructive",
+                              item.status === "uploading" && "text-muted-foreground"
+                            )}
+                          >
+                            {getStatusLabel(item.status)}
+                          </span>
+                        </div>
+                      </Progress>
+                      <div className="mt-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                        <span>{item.progress}%</span>
+                        <button
+                          type="button"
+                          onClick={() => removeFile(item.id)}
+                          disabled={item.status === "uploading"}
+                          className="text-xs hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          移除
+                        </button>
+                      </div>
+                      {item.error && (
+                        <p className="mt-2 text-xs text-destructive">{item.error}</p>
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>
             )}
 
             <p className="text-xs text-muted-foreground">
-              💡 AI 会自动解析 PDF 文字内容和图片视觉信息，提取品牌关键信息
+              {uploading
+                ? "正在上传文件，请稍等，进度条会实时显示上传状态"
+                : "💡 AI 会自动解析 PDF 文字内容和图片视觉信息，提取品牌关键信息"}
             </p>
           </div>
         )}
@@ -207,7 +328,10 @@ export default function StepInput({ onNext }: StepInputProps) {
               </span>
               <button
                 type="button"
-                onClick={() => setLogoUrl(null)}
+                onClick={() => {
+                  setLogoUrl(null);
+                  setLogoUpload(null);
+                }}
                 className="text-xs text-destructive hover:underline"
               >
                 移除
@@ -221,14 +345,42 @@ export default function StepInput({ onNext }: StepInputProps) {
                 onChange={handleLogoFile}
                 className="hidden"
                 id="logo-upload"
+                disabled={logoUploading}
               />
               <label
                 htmlFor="logo-upload"
-                className="cursor-pointer text-sm px-3 py-1.5 rounded border border-border hover:border-muted-foreground transition-colors"
+                className={cn(
+                  "cursor-pointer text-sm px-3 py-1.5 rounded border border-border hover:border-muted-foreground transition-colors",
+                  logoUploading && "pointer-events-none opacity-60"
+                )}
               >
                 {logoUploading ? "上传中..." : "选择 Logo 图片"}
               </label>
               <span className="text-xs text-muted-foreground">JPG / PNG / WEBP，最大 10MB</span>
+            </div>
+          )}
+
+          {logoUpload && !logoUrl && (
+            <div className="rounded-lg border bg-muted/20 p-3">
+              <Progress value={logoUpload.progress} className="gap-2">
+                <div className="flex items-center justify-between gap-3 w-full">
+                  <span className="truncate text-sm">{logoUpload.name}</span>
+                  <span
+                    className={cn(
+                      "shrink-0 text-xs",
+                      logoUpload.status === "success" && "text-emerald-600",
+                      logoUpload.status === "error" && "text-destructive",
+                      logoUpload.status === "uploading" && "text-muted-foreground"
+                    )}
+                  >
+                    {getStatusLabel(logoUpload.status)}
+                  </span>
+                </div>
+              </Progress>
+              <p className="mt-2 text-xs text-muted-foreground">{logoUpload.progress}%</p>
+              {logoUpload.error && (
+                <p className="mt-2 text-xs text-destructive">{logoUpload.error}</p>
+              )}
             </div>
           )}
         </div>
@@ -236,7 +388,7 @@ export default function StepInput({ onNext }: StepInputProps) {
         <Button
           onClick={handleSubmit}
           className="w-full"
-          disabled={!canSubmit || loading || uploading}
+          disabled={!canSubmit || loading || uploading || logoUploading}
         >
           {loading ? "AI 分析中，请稍候..." : "生成品牌画像"}
         </Button>

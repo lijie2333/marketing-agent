@@ -8,6 +8,22 @@ export async function GET() {
 
   const profiles = await db.brandProfile.findMany({
     where: { merchantId: session.user.id },
+    select: {
+      id: true,
+      brandName: true,
+      industry: true,
+      productDescription: true,
+      brandPersonality: true,
+      coreSellingPoints: true,
+      targetAudience: true,
+      recommendedStyles: true,
+      videoTone: true,
+      complianceNotes: true,
+      pdfDigest: true,
+      logoUrl: true,
+      createdAt: true,
+      updatedAt: true,
+    },
     orderBy: { createdAt: "desc" },
   });
   return NextResponse.json(profiles);

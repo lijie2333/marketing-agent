@@ -12,6 +12,22 @@ export async function GET(
   const { id } = await params;
   const profile = await db.brandProfile.findFirst({
     where: { id, merchantId: session.user.id },
+    select: {
+      id: true,
+      brandName: true,
+      industry: true,
+      productDescription: true,
+      brandPersonality: true,
+      coreSellingPoints: true,
+      targetAudience: true,
+      recommendedStyles: true,
+      videoTone: true,
+      complianceNotes: true,
+      pdfDigest: true,
+      logoUrl: true,
+      createdAt: true,
+      updatedAt: true,
+    },
   });
   if (!profile) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json(profile);
@@ -40,8 +56,26 @@ export async function PATCH(
 
   const { id } = await params;
   const body = await req.json();
-  // Remove fields that shouldn't be updated directly
-  const { id: _id, merchantId: _mid, createdAt: _ca, ...updateData } = body;
+  const updateData = {
+    brandName: typeof body.brandName === "string" ? body.brandName : undefined,
+    industry: typeof body.industry === "string" ? body.industry : undefined,
+    productDescription:
+      typeof body.productDescription === "string" ? body.productDescription : undefined,
+    brandPersonality:
+      typeof body.brandPersonality === "string" ? body.brandPersonality : undefined,
+    coreSellingPoints: Array.isArray(body.coreSellingPoints)
+      ? body.coreSellingPoints.filter((item: unknown) => typeof item === "string")
+      : undefined,
+    targetAudience: typeof body.targetAudience === "string" ? body.targetAudience : undefined,
+    recommendedStyles: Array.isArray(body.recommendedStyles)
+      ? body.recommendedStyles.filter((item: unknown) => typeof item === "string")
+      : undefined,
+    videoTone: typeof body.videoTone === "string" ? body.videoTone : undefined,
+    complianceNotes: Array.isArray(body.complianceNotes)
+      ? body.complianceNotes.filter((item: unknown) => typeof item === "string")
+      : undefined,
+    logoUrl: typeof body.logoUrl === "string" || body.logoUrl === null ? body.logoUrl : undefined,
+  };
 
   const profile = await db.brandProfile.updateMany({
     where: { id, merchantId: session.user.id },

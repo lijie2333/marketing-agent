@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { Worker, Job } from "bullmq";
+import { Worker, Job, Queue } from "bullmq";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { JimengAutomation, ContentReviewError } from "./jimeng";
@@ -69,6 +69,174 @@ function parseRedisConnection(redisUrl: string) {
 const redisConnection = parseRedisConnection(
   process.env.REDIS_URL || "redis://localhost:6379"
 );
+const dispatchQueue = new Queue("video-generation", { connection: redisConnection });
+
+async function enqueuePromptJob(prompt: {
+  id: string;
+  content: string;
+  duration: number;
+  ratio: string;
+  referenceImageUrls: string[];
+}) {
+  const job = await db.videoJob.create({
+    data: { promptId: prompt.id, status: "QUEUED" },
+  });
+
+  await dispatchQueue.add("generate-video", {
+    jobId: job.id,
+    promptId: prompt.id,
+    content: prompt.content,
+    duration: prompt.duration,
+    ratio: prompt.ratio,
+    referenceImageUrls: prompt.referenceImageUrls,
+  });
+
+  return job.id;
+}
+
+async function markBatchRunning(promptId: string) {
+  const prompt = await db.prompt.findUnique({
+    where: { id: promptId },
+    select: {
+      productionBatchId: true,
+      productionPhase: true,
+    },
+  });
+
+  if (!prompt?.productionBatchId || !prompt.productionPhase) return;
+
+  const nextStatus =
+    prompt.productionPhase === "SAMPLE" ? "SAMPLE_RUNNING" : "BULK_RUNNING";
+  const currentStatuses =
+    prompt.productionPhase === "SAMPLE"
+      ? (["SAMPLE_QUEUED", "SAMPLE_REVIEW"] as const)
+      : (["BULK_QUEUED", "FAILED"] as const);
+
+  await db.productionBatch.updateMany({
+    where: { id: prompt.productionBatchId, status: { in: [...currentStatuses] } },
+    data: { status: nextStatus },
+  });
+}
+
+async function reconcileProductionBatch(promptId: string) {
+  const prompt = await db.prompt.findUnique({
+    where: { id: promptId },
+    select: { productionBatchId: true },
+  });
+
+  if (!prompt?.productionBatchId) return;
+
+  const batch = await db.productionBatch.findUnique({
+    where: { id: prompt.productionBatchId },
+    include: {
+      prompts: {
+        select: {
+          id: true,
+          content: true,
+          duration: true,
+          ratio: true,
+          referenceImageUrls: true,
+          productionPhase: true,
+          videoJob: {
+            select: {
+              status: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!batch) return;
+
+  const samplePrompts = batch.prompts.filter((item) => item.productionPhase === "SAMPLE");
+  const bulkPrompts = batch.prompts.filter((item) => item.productionPhase === "BULK");
+  const terminalStatuses = new Set(["COMPLETED", "FAILED", "NEEDS_REVIEW"]);
+
+  const sampleAllTerminal =
+    samplePrompts.length > 0 &&
+    samplePrompts.every((item) => item.videoJob && terminalStatuses.has(item.videoJob.status));
+  const sampleAllCompleted =
+    samplePrompts.length > 0 &&
+    samplePrompts.every((item) => item.videoJob?.status === "COMPLETED");
+  const sampleHasFailure = samplePrompts.some(
+    (item) => item.videoJob && item.videoJob.status !== "COMPLETED"
+  );
+
+  if (sampleHasFailure) {
+    await db.productionBatch.update({
+      where: { id: batch.id },
+      data: { status: "SAMPLE_REVIEW" },
+    });
+    return;
+  }
+
+  if (!sampleAllTerminal) return;
+
+  if (sampleAllCompleted && bulkPrompts.length === 0) {
+    await db.productionBatch.update({
+      where: { id: batch.id },
+      data: {
+        status: "COMPLETED",
+        sampleCompletedAt: new Date(),
+        completedAt: new Date(),
+      },
+    });
+    return;
+  }
+
+  if (sampleAllCompleted) {
+    const pendingBulkPrompts = bulkPrompts.filter((item) => !item.videoJob);
+
+    if (pendingBulkPrompts.length > 0) {
+      await Promise.all(pendingBulkPrompts.map((item) => enqueuePromptJob(item)));
+      await db.productionBatch.update({
+        where: { id: batch.id },
+        data: {
+          status: "BULK_QUEUED",
+          sampleCompletedAt: new Date(),
+          bulkDispatchedAt: new Date(),
+        },
+      });
+      return;
+    }
+
+    const bulkStatuses = bulkPrompts.map((item) => item.videoJob?.status ?? null);
+    const bulkAllCompleted =
+      bulkPrompts.length > 0 && bulkPrompts.every((item) => item.videoJob?.status === "COMPLETED");
+    const bulkHasActive = bulkStatuses.some((status) => status === "QUEUED" || status === "PROCESSING");
+    const bulkAllTerminal =
+      bulkPrompts.length > 0 &&
+      bulkPrompts.every((item) => item.videoJob && terminalStatuses.has(item.videoJob.status));
+
+    if (bulkAllCompleted) {
+      await db.productionBatch.update({
+        where: { id: batch.id },
+        data: {
+          status: "COMPLETED",
+          sampleCompletedAt: batch.sampleCompletedAt ?? new Date(),
+          completedAt: new Date(),
+        },
+      });
+      return;
+    }
+
+    if (bulkHasActive) {
+      await db.productionBatch.update({
+        where: { id: batch.id },
+        data: { status: "BULK_RUNNING" },
+      });
+      return;
+    }
+
+    if (bulkAllTerminal) {
+      await db.productionBatch.update({
+        where: { id: batch.id },
+        data: { status: "FAILED" },
+      });
+    }
+  }
+}
 
 // First-login mode: open browser for manual login, then exit
 async function firstLogin() {
@@ -121,6 +289,9 @@ async function main() {
         where: { id: jobId },
         data: { status: "PROCESSING", workerId: WORKER_ID, startedAt: new Date() },
       });
+      await markBatchRunning(job.data.promptId as string).catch((error) => {
+        console.error(`[${WORKER_ID}] Failed to mark batch running:`, error);
+      });
 
       try {
         const referenceImagePaths = (referenceImageUrls ?? [])
@@ -145,6 +316,9 @@ async function main() {
             completedAt: new Date(),
           },
         });
+        await reconcileProductionBatch(job.data.promptId as string).catch((error) => {
+          console.error(`[${WORKER_ID}] Failed to reconcile batch after completion:`, error);
+        });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
 
@@ -166,8 +340,14 @@ async function main() {
         if (isContentReview) {
           // Don't throw — skip BullMQ retry for content review failures
           console.log(`[${WORKER_ID}] Job ${jobId} failed content review, skipping retry`);
+          await reconcileProductionBatch(job.data.promptId as string).catch((error) => {
+            console.error(`[${WORKER_ID}] Failed to reconcile batch after review rejection:`, error);
+          });
           return;
         }
+        await reconcileProductionBatch(job.data.promptId as string).catch((error) => {
+          console.error(`[${WORKER_ID}] Failed to reconcile batch after failure:`, error);
+        });
         throw err; // Let BullMQ handle retry for other errors
       }
     },
@@ -180,6 +360,7 @@ async function main() {
 
   process.on("SIGTERM", async () => {
     await worker.close();
+    await dispatchQueue.close();
     await jimeng.close();
     await db.$disconnect();
     process.exit(0);

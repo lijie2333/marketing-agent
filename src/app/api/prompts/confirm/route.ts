@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { jobDispatcherSkill } from "@/skills/job-dispatcher";
 
 export const maxDuration = 30;
+const SAMPLE_SIZE_PER_DIRECTION = 2;
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -24,7 +25,12 @@ export async function POST(req: NextRequest) {
       data: { isConfirmed: true },
     });
 
-    const result = await jobDispatcherSkill.handler({ strategyId });
+    const result = await jobDispatcherSkill.handler({
+      strategyId,
+      merchantId: session.user.id,
+      promptIds: JSON.stringify(promptIds),
+      sampleSizePerDirection: String(SAMPLE_SIZE_PER_DIRECTION),
+    });
     return NextResponse.json(result);
   } catch (err) {
     console.error("[prompts/confirm] Error:", err);

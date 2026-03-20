@@ -9,7 +9,23 @@ export async function GET() {
 
   const jobs = await db.videoJob.findMany({
     where: { prompt: { strategy: { brandProfile: { merchantId: session.user.id } } } },
-    include: { prompt: { select: { content: true, script: true, direction: true, style: true } } },
+    include: {
+      prompt: {
+        select: {
+          content: true,
+          script: true,
+          direction: true,
+          style: true,
+          productionPhase: true,
+          productionBatch: {
+            select: {
+              id: true,
+              status: true,
+            },
+          },
+        },
+      },
+    },
     orderBy: { createdAt: "desc" },
   });
 

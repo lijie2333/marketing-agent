@@ -50,6 +50,8 @@ export const skillRegistry = new SkillRegistry();
 // Auto-register all skills
 import { brandAnalyzerSkill } from "./brand-analyzer";
 skillRegistry.register(brandAnalyzerSkill);
+import { pdfBrandDigesterSkill } from "./pdf-brand-digester";
+skillRegistry.register(pdfBrandDigesterSkill);
 
 import { strategyPlannerSkill } from "./strategy-planner";
 import { seedancePrompterSkill } from "./seedance-prompter";

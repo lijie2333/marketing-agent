@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import type { PdfBrandDigest } from "@/types/pdf-digest";
 
 interface BrandProfile {
   id: string;
@@ -16,6 +17,7 @@ interface BrandProfile {
   recommendedStyles: string[];
   videoTone: string;
   complianceNotes: string[];
+  pdfDigest?: PdfBrandDigest | null;
   createdAt: string;
   logoUrl?: string | null;
 }
@@ -69,7 +71,7 @@ export default function ProfilePage() {
         <div>
           <h1 className="text-2xl font-bold">品牌画像</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            管理你的品牌画像，选择一个进入策略生成
+            页面显示的是摘要版，详细结构化画像和品牌 Markdown 已在后台沉淀，可直接驱动后续策略与提示词生成
           </p>
         </div>
         <Button onClick={() => router.push("/onboarding")}>
@@ -168,6 +170,20 @@ export default function ProfilePage() {
                     ))}
                   </div>
                 </div>
+
+                {profile.pdfDigest && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1">PDF 提炼要点</p>
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {profile.pdfDigest.brandFacts.proofPoints.slice(0, 3).map((point, i) => (
+                        <Badge key={i} variant="outline" className="text-xs">{point}</Badge>
+                      ))}
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {profile.pdfDigest.videoMarketingDigest.mustMention.slice(0, 2).join(" / ")}
+                    </p>
+                  </div>
+                )}
 
                 {/* 操作按钮 */}
                 <div className="flex gap-2 pt-2">

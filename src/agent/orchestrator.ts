@@ -1,4 +1,4 @@
-import { gemini } from "@/lib/gemini";
+import { getDefaultGeminiModelName, getGeminiModel, withGeminiRetry } from "@/lib/gemini";
 import { skillRegistry } from "@/skills/registry";
 
 const TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
@@ -10,8 +10,8 @@ export interface AgentContext {
 }
 
 export async function runAgent(context: AgentContext): Promise<string> {
-  const model = gemini.getGenerativeModel({
-    model: "gemini-2.5-flash",
+  const model = getGeminiModel({
+    model: getDefaultGeminiModelName(),
     tools: skillRegistry.toGeminiTools(),
   });
 
@@ -20,7 +20,9 @@ export async function runAgent(context: AgentContext): Promise<string> {
   });
 
   const deadline = Date.now() + TIMEOUT_MS;
-  let response = await chat.sendMessage(context.userMessage);
+  let response = await withGeminiRetry("agent chat", () =>
+    chat.sendMessage(context.userMessage)
+  );
 
   while (Date.now() < deadline) {
     const candidate = response.response.candidates?.[0];
@@ -60,7 +62,9 @@ export async function runAgent(context: AgentContext): Promise<string> {
       })
     );
 
-    response = await chat.sendMessage(toolResults);
+    response = await withGeminiRetry("agent tool follow-up", () =>
+      chat.sendMessage(toolResults)
+    );
   }
 
   throw new Error("Agent timeout after 5 minutes");

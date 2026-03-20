@@ -138,6 +138,11 @@ export default function JobsPage() {
                     <div className="flex items-center gap-2 mb-1">
                       <Badge variant="outline" className="text-xs">{job.prompt.direction}</Badge>
                       <Badge variant="outline" className="text-xs">{job.prompt.style}</Badge>
+                      {job.prompt.productionPhase && (
+                        <Badge variant="outline" className="text-xs">
+                          {job.prompt.productionPhase === "SAMPLE" ? "样片" : "批量"}
+                        </Badge>
+                      )}
                       {isContentReview(job.errorMessage) && (
                         <Badge className="text-xs bg-red-100 text-red-700 border-red-300" variant="outline">
                           审核不通过
@@ -228,6 +233,14 @@ export default function JobsPage() {
                       <span className="text-xs text-muted-foreground">{job.prompt.direction}</span>
                       <span className="text-xs text-muted-foreground">/</span>
                       <span className="text-xs text-muted-foreground">{job.prompt.style}</span>
+                      {job.prompt.productionPhase && (
+                        <>
+                          <span className="text-xs text-muted-foreground">/</span>
+                          <span className="text-xs text-muted-foreground">
+                            {job.prompt.productionPhase === "SAMPLE" ? "样片" : "批量"}
+                          </span>
+                        </>
+                      )}
                     </div>
 
                     {/* Prompt preview */}
@@ -286,6 +299,9 @@ export default function JobsPage() {
                         {job.completedAt && <p>完成时间: {new Date(job.completedAt).toLocaleString("zh-CN")}</p>}
                         {job.retryCount > 0 && <p>已重试: {job.retryCount} 次</p>}
                         {job.workerId && <p>Worker: {job.workerId}</p>}
+                        {job.prompt.productionBatch && (
+                          <p>生产批次: {job.prompt.productionBatch.id} / {job.prompt.productionBatch.status}</p>
+                        )}
                       </div>
                       {job.errorMessage && (
                         <div className="p-2 bg-red-50 border border-red-200 rounded text-xs text-red-600">

@@ -5,6 +5,11 @@ export interface JobPrompt {
   script: string;
   direction: string;
   style: string;
+  productionPhase: "SAMPLE" | "BULK" | null;
+  productionBatch: {
+    id: string;
+    status: "SAMPLE_QUEUED" | "SAMPLE_RUNNING" | "SAMPLE_REVIEW" | "BULK_QUEUED" | "BULK_RUNNING" | "COMPLETED" | "FAILED";
+  } | null;
 }
 
 export interface VideoJob {

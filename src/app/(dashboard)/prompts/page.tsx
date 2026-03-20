@@ -17,13 +17,21 @@ interface Prompt {
   style: string;
   complianceStatus: string;
   isConfirmed: boolean;
+  productionBatchId?: string | null;
+  productionPhase?: "SAMPLE" | "BULK" | null;
 }
 
 type DispatchState =
   | { status: "idle" }
   | { status: "confirming" }
   | { status: "dispatching"; message: string }
-  | { status: "success"; dispatched: number }
+  | {
+      status: "success";
+      dispatched: number;
+      sampleDispatched: number;
+      bulkPending: number;
+      batchId?: string | null;
+    }
   | { status: "error"; message: string };
 
 function PromptsContent() {
@@ -92,6 +100,9 @@ function PromptsContent() {
     setDispatch({ status: "dispatching", message: "正在标记提示词并派发任务到生成队列..." });
     try {
       let totalDispatched = 0;
+      let totalSamples = 0;
+      let totalBulkPending = 0;
+      let lastBatchId: string | null = null;
       for (const sid of strategyIds) {
         const idsForStrategy = Array.from(selected).filter(
           (id) => prompts.find((x) => x.id === id)?.strategyId === sid
@@ -105,15 +116,31 @@ function PromptsContent() {
           const data = await res.json().catch(() => ({}));
           throw new Error(data.error || `请求失败 (${res.status})`);
         }
-        const data = await res.json() as { dispatched?: number; error?: string };
+        const data = await res.json() as {
+          dispatched?: number;
+          sampleDispatched?: number;
+          bulkPending?: number;
+          batchId?: string | null;
+          error?: string;
+        };
         if (data.error) throw new Error(data.error);
         totalDispatched += data.dispatched ?? 0;
+        totalSamples += data.sampleDispatched ?? data.dispatched ?? 0;
+        totalBulkPending += data.bulkPending ?? 0;
+        lastBatchId = data.batchId ?? lastBatchId;
       }
       if (totalDispatched === 0) {
         setDispatch({ status: "error", message: "没有可派发的提示词。可能原因：提示词未通过合规审核，或已经派发过。" });
         return;
       }
-      setDispatch({ status: "success", dispatched: totalDispatched });
+      await fetchPrompts();
+      setDispatch({
+        status: "success",
+        dispatched: totalDispatched,
+        sampleDispatched: totalSamples,
+        bulkPending: totalBulkPending,
+        batchId: lastBatchId,
+      });
     } catch (err) {
       setDispatch({ status: "error", message: err instanceof Error ? err.message : "派发失败，请检查 Redis 服务是否运行" });
     }
@@ -167,7 +194,7 @@ function PromptsContent() {
                     <p className="text-destructive font-medium">没有合规通过的提示词可派发，请先审核。</p>
                   )}
                   <p className="text-muted-foreground">
-                    确认后将派发 {approvedCount} 条合规通过的提示词到视频生成队列。
+                    系统会先按方向派发样片，样片全部成功后再自动扩量剩余批量任务。
                   </p>
                 </div>
                 <div className="flex gap-2 justify-end pt-2">
@@ -194,9 +221,12 @@ function PromptsContent() {
                   <div className="text-4xl">&#10003;</div>
                   <h3 className="text-lg font-bold text-green-600">派发成功！</h3>
                   <p className="text-sm text-muted-foreground">
-                    已将 <strong>{dispatch.dispatched}</strong> 条提示词加入视频生成队列。
-                    Worker 服务会自动开始处理。
+                    已先派发 <strong>{dispatch.sampleDispatched}</strong> 条样片进入队列，
+                    剩余 <strong>{dispatch.bulkPending}</strong> 条会在样片全部成功后自动扩量。
                   </p>
+                  {dispatch.batchId && (
+                    <p className="text-xs text-muted-foreground">批次 ID：{dispatch.batchId}</p>
+                  )}
                 </div>
                 <div className="flex gap-2 justify-center pt-2">
                   <Button variant="outline" onClick={() => setDispatch({ status: "idle" })}>
@@ -315,7 +345,7 @@ function PromptsContent() {
                         #{idx + 1} 视频提示词
                         {p.isConfirmed && <span className="ml-2 text-green-600">（已派发）</span>}
                       </div>
-                      <p className="text-sm leading-relaxed">{p.content}</p>
+                      <p className="text-sm leading-relaxed whitespace-pre-wrap">{p.content}</p>
                       {p.script && (
                         <div className="mt-3 p-3 bg-muted/50 rounded-lg border">
                           <div className="text-xs text-muted-foreground mb-1 font-medium">
@@ -329,6 +359,11 @@ function PromptsContent() {
                   <div className="flex items-center gap-2 mt-2">
                     <Badge variant="outline" className="text-xs">{p.direction}</Badge>
                     <Badge variant="outline" className="text-xs">{p.style}</Badge>
+                    {p.productionPhase && (
+                      <Badge variant="outline" className="text-xs">
+                        {p.productionPhase === "SAMPLE" ? "样片" : "批量"}
+                      </Badge>
+                    )}
                     <Badge
                       variant={p.complianceStatus === "APPROVED" ? "default" : "destructive"}
                       className="text-xs"

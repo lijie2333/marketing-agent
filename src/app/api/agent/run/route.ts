@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { brandAnalyzerSkill } from "@/skills/brand-analyzer";
+import type { PdfBrandDigest } from "@/types/pdf-digest";
 
 export const maxDuration = 60;
 
@@ -22,30 +23,41 @@ export async function POST(req: NextRequest) {
       description,
       merchantId: session.user.id,
       fileUrls: JSON.stringify(uploadedFileUrls || []),
+      logoUrl: logoUrl || "",
     }) as {
-      brandName: string;
-      industry: string;
-      productDescription: string;
-      brandPersonality: string;
-      coreSellingPoints: string[];
-      targetAudience: string;
-      recommendedStyles: string[];
-      videoTone: string;
-      complianceNotes: string[];
+      summary: {
+        brandName: string;
+        industry: string;
+        productDescription: string;
+        brandPersonality: string;
+        coreSellingPoints: string[];
+        targetAudience: string;
+        recommendedStyles: string[];
+        videoTone: string;
+        complianceNotes: string[];
+      };
+      detailedProfile: object;
+      brandProfileMarkdown: string;
+      strategySystemPrompt: string;
+      pdfDigest?: PdfBrandDigest | null;
     };
 
     const profile = await db.brandProfile.create({
       data: {
         merchantId: session.user.id,
-        brandName: profileData.brandName || "",
-        industry: profileData.industry || "",
-        productDescription: profileData.productDescription || "",
-        brandPersonality: profileData.brandPersonality || "",
-        coreSellingPoints: profileData.coreSellingPoints || [],
-        targetAudience: profileData.targetAudience || "",
-        recommendedStyles: profileData.recommendedStyles || [],
-        videoTone: profileData.videoTone || "",
-        complianceNotes: profileData.complianceNotes || [],
+        brandName: profileData.summary.brandName || "",
+        industry: profileData.summary.industry || "",
+        productDescription: profileData.summary.productDescription || "",
+        brandPersonality: profileData.summary.brandPersonality || "",
+        coreSellingPoints: profileData.summary.coreSellingPoints || [],
+        targetAudience: profileData.summary.targetAudience || "",
+        recommendedStyles: profileData.summary.recommendedStyles || [],
+        videoTone: profileData.summary.videoTone || "",
+        complianceNotes: profileData.summary.complianceNotes || [],
+        detailedProfile: profileData.detailedProfile,
+        pdfDigest: profileData.pdfDigest ?? undefined,
+        brandProfileMarkdown: profileData.brandProfileMarkdown || "",
+        strategySystemPrompt: profileData.strategySystemPrompt || "",
         uploadedFileUrls: uploadedFileUrls || [],
         logoUrl: logoUrl || null,
         questionnaireAnswers: { description },
